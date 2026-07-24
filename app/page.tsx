@@ -38,6 +38,12 @@ export default function Home() {
   const sessionStartTimeRef = useRef<Date | null>(null);
   const [pauseCount, setPauseCount] = useState(0);
 
+  // New confirmation modal state
+  const [confirmEnd, setConfirmEnd] = useState<{
+    show: boolean;
+    elapsed: number;
+  } | null>(null);
+
   const [popupData, setPopupData] = useState<{
     show: boolean;
     durationStr: string;
@@ -96,9 +102,9 @@ export default function Home() {
     }
   };
 
-  const handleCompleteSession = async (durationSec: number) => {
-    // Removed the 10 second limit so you can test it easily!
-    if (durationSec <= 0) {
+  const executeCompleteSession = async (durationSec: number) => {
+    // Feature 1: No session under 5 minutes (300 seconds) is counted
+    if (durationSec < 300) {
       setIsRunning(false);
       setIsPaused(false);
       return;
@@ -120,22 +126,17 @@ export default function Home() {
       duration_seconds: durationSec,
     };
 
-    // Optimistically update UI so stats change INSTANTLY
     const optimisticRecord = {
       ...newRecord,
       created_at: new Date().toISOString(),
     };
     setSessions((prev) => [...prev, optimisticRecord as SessionRecord]);
 
-    // Save to DB in background
     await supabase.from("sessions").insert([newRecord]);
 
     const hrs = Math.floor(durationSec / 3600);
     const mins = Math.floor((durationSec % 3600) / 60);
-    const secs = durationSec % 60;
-    // Show exact seconds if under a minute for testing purposes
-    const durStr =
-      hrs > 0 ? `${hrs}h ${mins}m` : mins > 0 ? `${mins}m` : `${secs}s`;
+    const durStr = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
 
     playSuccessSound();
     setPopupData({
@@ -159,12 +160,13 @@ export default function Home() {
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isRunning && !isPaused) {
+    // Don't tick if the confirmation modal is open
+    if (isRunning && !isPaused && !confirmEnd?.show) {
       interval = setInterval(() => {
         setTimeInSeconds((prev) => {
           if (mode === "pomodoro") {
             if (prev <= 1) {
-              handleCompleteSession(initialTimeRef.current);
+              executeCompleteSession(initialTimeRef.current);
               return 0;
             }
             return prev - 1;
@@ -175,7 +177,7 @@ export default function Home() {
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [isRunning, isPaused, mode, selectedTag]);
+  }, [isRunning, isPaused, mode, selectedTag, confirmEnd]);
 
   const handleStart = () => {
     if (mode === "pomodoro") {
@@ -199,7 +201,7 @@ export default function Home() {
     setIsPaused(!isPaused);
   };
 
-  const handleUserComplete = () => {
+  const triggerCompleteFlow = () => {
     if (isRunning) {
       let elapsed = 0;
       if (mode === "pomodoro") {
@@ -207,7 +209,7 @@ export default function Home() {
       } else {
         elapsed = timeInSeconds;
       }
-      handleCompleteSession(elapsed);
+      setConfirmEnd({ show: true, elapsed });
     }
   };
 
@@ -219,7 +221,7 @@ export default function Home() {
       .toString()
       .padStart(2, "0");
     const s = (totalSeconds % 60).toString().padStart(2, "0");
-    return h === "00" ? `${m} : ${s}` : `${h} : ${m} : ${s}`;
+    return h === "00" ? `${m}:${s}` : `${h}:${m}:${s}`;
   };
 
   const handleAddTag = async () => {
@@ -254,10 +256,10 @@ export default function Home() {
   const handleDeleteTag = async (index: number, e: React.MouseEvent) => {
     e.stopPropagation();
     const tagToDelete = tags[index];
-    const confirmDelete = window.confirm(
+    const isConfirmed = window.confirm(
       `Are you sure you want to delete the "${tagToDelete}" tag?`,
     );
-    if (!confirmDelete) return;
+    if (!isConfirmed) return;
 
     const newTags = tags.filter((_, i) => i !== index);
     setTags(newTags);
@@ -345,7 +347,6 @@ export default function Home() {
       const d = new Date(s.created_at);
       let dayIndex = d.getDay() - 1;
       if (dayIndex === -1) dayIndex = 6;
-
       const tag = s.tag_name;
       dayData[dayIndex].tags[tag] =
         (dayData[dayIndex].tags[tag] || 0) + s.duration_seconds;
@@ -376,6 +377,52 @@ export default function Home() {
   };
   const calendar = generateCalendar();
 
+  // Date and Day Progress Formatters
+  const getFormattedDate = (date: Date) => {
+    const days = [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+    ];
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+    return `${days[date.getDay()]} | ${date.getDate()} ${months[date.getMonth()]} '${date.getFullYear().toString().slice(-2)}`;
+  };
+
+  const getAmPmTime = (date: Date) => {
+    let hours = date.getHours();
+    let minutes = date.getMinutes().toString().padStart(2, "0");
+    let seconds = date.getSeconds().toString().padStart(2, "0");
+    const ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    return { time: `${hours}:${minutes}:${seconds}`, ampm };
+  };
+
+  const clock = getAmPmTime(currentTime);
+  const dayProgressPct =
+    ((currentTime.getHours() * 3600 +
+      currentTime.getMinutes() * 60 +
+      currentTime.getSeconds()) /
+      86400) *
+    100;
+
   return (
     <main className="relative h-screen w-screen flex flex-col items-center justify-center text-white font-sans overflow-hidden select-none">
       {/* BACKGROUND IMAGE */}
@@ -390,19 +437,25 @@ export default function Home() {
         <div className="absolute inset-0 bg-black/40 transition-all duration-700"></div>
       </div>
 
-      {/* TOP LEFT */}
+      {/* TOP LEFT: Clock, Date & Day Progress */}
       <div
         className={`absolute top-8 left-8 flex flex-col items-start transition-opacity duration-500 ${isRunning && !isPaused ? "opacity-20" : "opacity-100"}`}
       >
-        <h2 className="text-xs font-semibold tracking-wider text-white/70 uppercase">
-          Greetings, Advait
-        </h2>
-        <div className="text-3xl font-light font-mono mt-0.5 tracking-wider drop-shadow-md">
-          {currentTime.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-          })}
+        <div className="flex items-baseline tracking-tight drop-shadow-md">
+          <span className="text-4xl font-semibold font-sans">{clock.time}</span>
+          <span className="text-sm font-bold ml-1 text-white/80 uppercase">
+            {clock.ampm}
+          </span>
+        </div>
+        <div className="text-sm tracking-wide text-white/90 mt-1 mb-2 font-medium">
+          {getFormattedDate(currentTime)}
+        </div>
+        {/* Day Progress Bar */}
+        <div className="w-48 h-1.5 bg-white/20 rounded-full overflow-hidden border border-white/10">
+          <div
+            className="h-full bg-white transition-all duration-1000 ease-linear"
+            style={{ width: `${dayProgressPct}%` }}
+          ></div>
         </div>
       </div>
 
@@ -427,18 +480,67 @@ export default function Home() {
         </div>
       </div>
 
-      {/* POPUP OVERLAY */}
+      {/* CONFIRM END SESSION POPUP */}
+      {confirmEnd && confirmEnd.show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md transition-opacity">
+          <div className="bg-[#111111]/95 border border-white/10 p-8 rounded-3xl shadow-2xl w-[350px] flex flex-col items-center text-center animate-in zoom-in-95 duration-200">
+            <h2 className="text-xl font-bold tracking-wide mb-2 text-white/90">
+              End Session?
+            </h2>
+
+            <div className="text-5xl font-bold tracking-tighter mb-4 text-white">
+              {Math.floor(confirmEnd.elapsed / 60)}
+              <span className="text-lg text-white/50 tracking-normal ml-1">
+                MIN
+              </span>
+            </div>
+
+            <div className="w-full bg-black/40 border border-white/5 rounded-xl p-4 text-left text-xs mb-6">
+              <span className="text-orange-400 font-bold uppercase tracking-wider mb-2 block text-center">
+                Warning
+              </span>
+              <ul className="list-disc pl-4 text-white/60 space-y-1">
+                <li>
+                  Sessions shorter than{" "}
+                  <span className="text-white underline">5 mins</span> won't be
+                  saved to your stats.
+                </li>
+              </ul>
+            </div>
+
+            <div className="flex gap-3 w-full">
+              <button
+                onClick={() => {
+                  setConfirmEnd(null);
+                  executeCompleteSession(confirmEnd.elapsed);
+                }}
+                className="flex-1 py-3 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl font-bold text-xs uppercase tracking-widest transition-all"
+              >
+                <span className="mr-2">✔️</span> Yes
+              </button>
+              <button
+                onClick={() => setConfirmEnd(null)}
+                className="flex-1 py-3 bg-black/40 hover:bg-black/60 border border-white/10 rounded-xl font-bold text-xs uppercase tracking-widest transition-all text-white/50 hover:text-white"
+              >
+                <span className="mr-2">❌</span> No
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUCCESS COMPLETION POPUP */}
       {popupData && popupData.show && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md transition-opacity">
-          <div className="bg-[#111111]/90 border border-white/10 p-8 rounded-3xl shadow-2xl w-[400px] flex flex-col items-center text-center transform scale-100 animate-in zoom-in-95 duration-300">
+          <div className="bg-[#111111]/90 border border-white/10 p-8 rounded-3xl shadow-2xl w-[400px] flex flex-col items-center text-center animate-in zoom-in-95 duration-300">
             {popupData.isFirstOfDay && (
-              <div className="w-full bg-gradient-to-r from-orange-500/20 to-amber-500/20 border border-orange-400/40 text-orange-300 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest mb-6 animate-pulse">
+              <div className="w-full bg-white/10 border border-white/20 text-white px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest mb-6 animate-pulse">
                 🔥 Daily Streak Updated!
               </div>
             )}
-            <h2 className="text-2xl font-bold mb-2">Session Complete!</h2>
+            <h2 className="text-2xl font-bold mb-2">Session Saved!</h2>
             <p className="text-sm text-white/60 mb-6">
-              Congratulations, you completed{" "}
+              Congratulations, you logged{" "}
               <span className="text-white font-bold">
                 {popupData.durationStr}
               </span>{" "}
@@ -458,9 +560,7 @@ export default function Home() {
               </div>
               <div className="flex justify-between">
                 <span className="text-white/40">Interruptions</span>
-                <span className="font-mono text-orange-300">
-                  {popupData.pauses} pauses
-                </span>
+                <span className="font-mono">{popupData.pauses} pauses</span>
               </div>
             </div>
 
@@ -477,22 +577,39 @@ export default function Home() {
       {/* MAIN WIDGET */}
       {isRunning ? (
         <div className="z-10 flex flex-col items-center scale-90 transition-all duration-500">
-          <div className="text-xs font-bold uppercase tracking-widest text-orange-300 bg-orange-400/10 px-3 py-1 rounded-full mb-4 border border-orange-400/20">
-            {selectedTag}
-          </div>
-          <div className="text-8xl font-bold font-mono tracking-widest drop-shadow-2xl mb-8">
+          <div className="text-8xl md:text-9xl font-bold font-sans tracking-tighter drop-shadow-2xl mb-4">
             {formatRunningTime(timeInSeconds)}
           </div>
-          <div className="flex gap-4">
+
+          {/* Progress Bar under timer (Only shows for Pomodoro mode) */}
+          {mode === "pomodoro" && (
+            <div className="w-72 h-1 bg-white/20 rounded-full mb-8 overflow-hidden">
+              <div
+                className="h-full bg-white transition-all duration-1000 ease-linear"
+                style={{
+                  width: `${100 - (timeInSeconds / initialTimeRef.current) * 100}%`,
+                }}
+              ></div>
+            </div>
+          )}
+          {mode === "stopwatch" && <div className="h-9"></div> /* Spacer */}
+
+          <div className="flex gap-4 items-center">
+            {/* Tag moved down next to buttons */}
+            <div className="px-6 py-3.5 bg-black/40 border border-white/10 rounded-full font-bold text-xs uppercase tracking-widest text-white/60">
+              {selectedTag}
+            </div>
+
             <button
               onClick={togglePause}
-              className="px-8 py-2.5 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full font-bold text-xs uppercase tracking-widest backdrop-blur-md transition-all active:scale-95"
+              className="px-8 py-3.5 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full font-bold text-xs uppercase tracking-widest backdrop-blur-md transition-all active:scale-95"
             >
               {isPaused ? "Resume" : "Pause"}
             </button>
+
             <button
-              onClick={handleUserComplete}
-              className="px-8 py-2.5 bg-orange-500/20 hover:bg-orange-500/40 border border-orange-500/30 text-orange-300 rounded-full font-bold text-xs uppercase tracking-widest backdrop-blur-md transition-all active:scale-95"
+              onClick={triggerCompleteFlow}
+              className="px-8 py-3.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-full font-bold text-xs uppercase tracking-widest backdrop-blur-md transition-all active:scale-95"
             >
               Complete
             </button>
@@ -535,7 +652,7 @@ export default function Home() {
                     type="text"
                     value={inputHrs}
                     onChange={(e) => setInputHrs(e.target.value.slice(0, 2))}
-                    className="w-16 text-5xl font-bold font-mono text-center bg-black/40 outline-none border border-white/15 rounded-xl focus:border-white/60 transition-colors py-1.5"
+                    className="w-16 text-5xl font-bold font-sans tracking-tighter text-center bg-black/40 outline-none border border-white/15 rounded-xl focus:border-white/60 transition-colors py-1.5"
                   />
                   <span className="text-[10px] font-bold tracking-widest text-white/40 mt-1.5">
                     HR
@@ -547,7 +664,7 @@ export default function Home() {
                     type="text"
                     value={inputMins}
                     onChange={(e) => setInputMins(e.target.value.slice(0, 2))}
-                    className="w-16 text-5xl font-bold font-mono text-center bg-black/40 outline-none border border-white/15 rounded-xl focus:border-white/60 transition-colors py-1.5"
+                    className="w-16 text-5xl font-bold font-sans tracking-tighter text-center bg-black/40 outline-none border border-white/15 rounded-xl focus:border-white/60 transition-colors py-1.5"
                   />
                   <span className="text-[10px] font-bold tracking-widest text-white/40 mt-1.5">
                     MIN
@@ -555,7 +672,7 @@ export default function Home() {
                 </div>
               </div>
             ) : (
-              <div className="text-6xl font-bold font-mono mb-6 tracking-widest py-2 text-white/90">
+              <div className="text-6xl font-bold font-sans tracking-tighter mb-6 py-2 text-white/90">
                 00:00
               </div>
             )}
@@ -631,7 +748,7 @@ export default function Home() {
 
             <button
               onClick={handleStart}
-              className="w-full py-2.5 bg-gradient-to-r from-orange-500/20 to-amber-500/20 hover:from-orange-500/30 hover:to-amber-500/30 border border-orange-400/40 rounded-xl font-semibold transition-all text-xs tracking-wider shadow-lg mb-3 active:scale-95"
+              className="w-full py-2.5 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl font-semibold transition-all text-xs tracking-wider shadow-lg mb-3 active:scale-95"
             >
               Start Session
             </button>
@@ -827,7 +944,7 @@ export default function Home() {
                         <div
                           key={idx}
                           className={`aspect-square rounded-md flex items-center justify-center text-[10px] font-mono
-                            ${!day ? "invisible" : calendar.activeDays.has(day) ? "bg-orange-500/20 text-orange-300 border border-orange-500/30" : "bg-white/5 text-white/30 border border-white/5"}
+                            ${!day ? "invisible" : calendar.activeDays.has(day) ? "bg-white/20 text-white border border-white/30" : "bg-white/5 text-white/30 border border-white/5"}
                           `}
                         >
                           {day}
