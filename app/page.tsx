@@ -107,7 +107,7 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
-  // Soft, Aesthetic Audio Engine
+  // Soft, Aesthetic Audio Engine — using local files from /public
   const playSound = (url: string) => {
     try {
       const audio = new Audio(url);
@@ -118,22 +118,10 @@ export default function Home() {
     }
   };
 
-  const playStartSound = () =>
-    playSound(
-      "https://assets.mixkit.co/active_storage/sfx/2870/2870-preview.mp3",
-    ); // Subtle modern click
-  const playPauseSound = () =>
-    playSound(
-      "https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3",
-    ); // Soft pop
-  const playResumeSound = () =>
-    playSound(
-      "https://assets.mixkit.co/active_storage/sfx/2573/2573-preview.mp3",
-    ); // Clean rise pop
-  const playSuccessSound = () =>
-    playSound(
-      "https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3",
-    ); // Soothing ambient chime
+  const playStartSound = () => playSound("/startSound.mp3");
+  const playPauseSound = () => playSound("/pauseSound.mp3");
+  const playResumeSound = () => playSound("/resumeSound.mp3");
+  const playSuccessSound = () => playSound("/successSound.mp3");
 
   const executeCompleteSession = async (durationSec: number) => {
     if (durationSec < 300) {
@@ -412,6 +400,9 @@ export default function Home() {
     const monday = new Date(curr.setDate(first));
     monday.setHours(0, 0, 0, 0);
 
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+
     for (let i = 0; i < 7; i++) {
       const dayDate = new Date(monday);
       dayDate.setDate(monday.getDate() + i);
@@ -433,7 +424,10 @@ export default function Home() {
     }
 
     const maxValue = Math.max(...dayData.map((d) => d.totalValue), 1);
-    return { dayData, maxValue };
+
+    const rangeLabel = `${monday.getDate()} ${monday.toLocaleString("default", { month: "short" })} - ${sunday.getDate()} ${sunday.toLocaleString("default", { month: "short" })}`;
+
+    return { dayData, maxValue, rangeLabel };
   };
   const weeklyChart = generateWeeklyData();
 
@@ -768,16 +762,12 @@ export default function Home() {
       {/* MAIN WIDGET */}
       {isRunning ? (
         <div className="z-10 flex flex-col items-center scale-90 transition-all duration-500">
-          {/* Top Glassmorphism Pills Side-by-Side */}
-          <div className="flex gap-3 mb-8">
-            <div className="px-5 py-2.5 bg-white/10 border border-white/20 rounded-full font-bold text-[10px] uppercase tracking-widest backdrop-blur-md">
-              {selectedTag}
-            </div>
-            <div className="px-5 py-2.5 bg-white/10 border border-white/20 rounded-full font-bold text-[10px] uppercase tracking-widest backdrop-blur-md text-white/80">
-              {sessionTitle || "Focus Session"}
+          {/* Combined Top Glassmorphism Pill */}
+          <div className="mb-8">
+            <div className="px-6 py-2.5 bg-white/10 border border-white/20 rounded-full font-bold text-[10px] uppercase tracking-widest backdrop-blur-md text-white/90 shadow-lg">
+              {selectedTag} - {sessionTitle || "Focus Session"}
             </div>
           </div>
-
           <div className="flex items-center gap-6">
             <button
               onClick={() => adjustTimer(-300)}
@@ -1237,6 +1227,39 @@ export default function Home() {
                             Session Count
                           </button>
                         </div>
+                      </div>
+
+                      {/* Week Navigation */}
+                      <div className="flex items-center justify-between mb-4 px-1">
+                        <button
+                          onClick={() => setWeekOffset((w) => w + 1)}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-black/40 border border-white/10 text-white/60 hover:text-white hover:border-white/30 transition active:scale-90"
+                          aria-label="Previous week"
+                        >
+                          ←
+                        </button>
+                        <div className="flex flex-col items-center">
+                          <span className="text-xs font-bold text-white/80 font-mono">
+                            {weeklyChart.rangeLabel}
+                          </span>
+                          <span className="text-[9px] text-white/30 uppercase tracking-widest mt-0.5">
+                            {weekOffset === 0
+                              ? "This Week"
+                              : weekOffset === 1
+                                ? "Last Week"
+                                : `${weekOffset} Weeks Ago`}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() =>
+                            setWeekOffset((w) => Math.max(0, w - 1))
+                          }
+                          disabled={weekOffset === 0}
+                          className={`w-7 h-7 flex items-center justify-center rounded-lg bg-black/40 border border-white/10 transition active:scale-90 ${weekOffset === 0 ? "text-white/15 cursor-not-allowed" : "text-white/60 hover:text-white hover:border-white/30"}`}
+                          aria-label="Next week"
+                        >
+                          →
+                        </button>
                       </div>
 
                       <div className="h-44 flex items-end justify-between gap-3 px-2 pt-2">
