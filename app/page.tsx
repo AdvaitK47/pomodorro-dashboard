@@ -26,6 +26,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<"focus" | "stats">("focus");
   const [statsSubTab, setStatsSubTab] = useState<"today" | "general">("today");
   const [timeframe, setTimeframe] = useState<"weekly" | "monthly">("weekly");
+  const [weekOffset, setWeekOffset] = useState(0); // 0 = current week, 1 = 1 week ago
 
   const [mode, setMode] = useState<"pomodoro" | "stopwatch">("pomodoro");
   const [isRunning, setIsRunning] = useState(false);
@@ -38,12 +39,15 @@ export default function Home() {
   const sessionStartTimeRef = useRef<Date | null>(null);
   const [pauseCount, setPauseCount] = useState(0);
 
-  // New confirmation modal state
+  // Modals
   const [confirmEnd, setConfirmEnd] = useState<{
     show: boolean;
     elapsed: number;
   } | null>(null);
-
+  const [tagToDelete, setTagToDelete] = useState<{
+    index: number;
+    name: string;
+  } | null>(null);
   const [popupData, setPopupData] = useState<{
     show: boolean;
     durationStr: string;
@@ -90,11 +94,10 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
-  const playSuccessSound = () => {
+  // Sounds
+  const playSound = (url: string) => {
     try {
-      const audio = new Audio(
-        "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3",
-      );
+      const audio = new Audio(url);
       audio.volume = 0.5;
       audio.play();
     } catch (e) {
@@ -102,8 +105,20 @@ export default function Home() {
     }
   };
 
+  const playSuccessSound = () =>
+    playSound(
+      "https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3",
+    ); // Celebration sound
+  const playPauseSound = () =>
+    playSound(
+      "https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3",
+    ); // Short bell 1
+  const playResumeSound = () =>
+    playSound(
+      "https://assets.mixkit.co/active_storage/sfx/2570/2570-preview.mp3",
+    ); // Short bell 2
+
   const executeCompleteSession = async (durationSec: number) => {
-    // Feature 1: No session under 5 minutes (300 seconds) is counted
     if (durationSec < 300) {
       setIsRunning(false);
       setIsPaused(false);
@@ -121,11 +136,7 @@ export default function Home() {
     );
     const isFirstOfDay = todaySessions.length === 0;
 
-    const newRecord = {
-      tag_name: selectedTag,
-      duration_seconds: durationSec,
-    };
-
+    const newRecord = { tag_name: selectedTag, duration_seconds: durationSec };
     const optimisticRecord = {
       ...newRecord,
       created_at: new Date().toISOString(),
@@ -160,7 +171,6 @@ export default function Home() {
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    // Don't tick if the confirmation modal is open
     if (isRunning && !isPaused && !confirmEnd?.show) {
       interval = setInterval(() => {
         setTimeInSeconds((prev) => {
@@ -197,18 +207,31 @@ export default function Home() {
   };
 
   const togglePause = () => {
-    if (!isPaused) setPauseCount((p) => p + 1);
+    if (!isPaused) {
+      setPauseCount((p) => p + 1);
+      playPauseSound();
+    } else {
+      playResumeSound();
+    }
     setIsPaused(!isPaused);
+  };
+
+  const adjustTimer = (seconds: number) => {
+    if (mode !== "pomodoro" || !isRunning) return;
+    setTimeInSeconds((prev) => {
+      const newTime = prev + seconds;
+      if (newTime <= 0) return 1;
+      return newTime;
+    });
+    initialTimeRef.current += seconds;
   };
 
   const triggerCompleteFlow = () => {
     if (isRunning) {
-      let elapsed = 0;
-      if (mode === "pomodoro") {
-        elapsed = initialTimeRef.current - timeInSeconds;
-      } else {
-        elapsed = timeInSeconds;
-      }
+      let elapsed =
+        mode === "pomodoro"
+          ? initialTimeRef.current - timeInSeconds
+          : timeInSeconds;
       setConfirmEnd({ show: true, elapsed });
     }
   };
@@ -253,20 +276,16 @@ export default function Home() {
       .eq("name", oldTag);
   };
 
-  const handleDeleteTag = async (index: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const tagToDelete = tags[index];
-    const isConfirmed = window.confirm(
-      `Are you sure you want to delete the "${tagToDelete}" tag?`,
-    );
-    if (!isConfirmed) return;
-
+  const confirmDeleteTag = async () => {
+    if (!tagToDelete) return;
+    const { index, name } = tagToDelete;
     const newTags = tags.filter((_, i) => i !== index);
     setTags(newTags);
-    if (selectedTag === tagToDelete) {
+    if (selectedTag === name) {
       setSelectedTag(newTags[0] || "No Tags Yet");
     }
-    await supabase.from("tags").delete().eq("name", tagToDelete);
+    setTagToDelete(null);
+    await supabase.from("tags").delete().eq("name", name);
   };
 
   // --- STATS CALCULATIONS ---
@@ -298,12 +317,10 @@ export default function Home() {
         sessions.map((s) => new Date(s.created_at).toISOString().split("T")[0]),
       ),
     ).sort();
-
-    let currentStreak = 0;
-    let maxStreak = 0;
-    let tempStreak = 0;
-    let checkDate = new Date();
-
+    let currentStreak = 0,
+      maxStreak = 0,
+      tempStreak = 0,
+      checkDate = new Date();
     while (true) {
       const dateStr = checkDate.toISOString().split("T")[0];
       if (uniqueDays.includes(dateStr)) {
@@ -311,19 +328,15 @@ export default function Home() {
         checkDate.setDate(checkDate.getDate() - 1);
       } else if (currentStreak === 0 && dateStr === todayStr) {
         checkDate.setDate(checkDate.getDate() - 1);
-      } else {
-        break;
-      }
+      } else break;
     }
-
     for (let i = 0; i < uniqueDays.length; i++) {
-      if (i === 0) {
-        tempStreak = 1;
-      } else {
-        const prev = new Date(uniqueDays[i - 1]);
-        const curr = new Date(uniqueDays[i]);
+      if (i === 0) tempStreak = 1;
+      else {
         const diffDays = Math.round(
-          (curr.getTime() - prev.getTime()) / (1000 * 3600 * 24),
+          (new Date(uniqueDays[i]).getTime() -
+            new Date(uniqueDays[i - 1]).getTime()) /
+            86400000,
         );
         if (diffDays === 1) tempStreak++;
         else tempStreak = 1;
@@ -343,18 +356,33 @@ export default function Home() {
       totalSec: 0,
     }));
 
+    // Calculate the target week's Monday
+    const targetDate = new Date();
+    targetDate.setDate(
+      targetDate.getDate() -
+        targetDate.getDay() +
+        (targetDate.getDay() === 0 ? -6 : 1) -
+        weekOffset * 7,
+    );
+    targetDate.setHours(0, 0, 0, 0);
+
     sessions.forEach((s) => {
       const d = new Date(s.created_at);
-      let dayIndex = d.getDay() - 1;
-      if (dayIndex === -1) dayIndex = 6;
-      const tag = s.tag_name;
-      dayData[dayIndex].tags[tag] =
-        (dayData[dayIndex].tags[tag] || 0) + s.duration_seconds;
-      dayData[dayIndex].totalSec += s.duration_seconds;
+      const diffTime = d.getTime() - targetDate.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 3600 * 24));
+
+      if (diffDays >= 0 && diffDays < 7) {
+        let dayIndex = d.getDay() - 1;
+        if (dayIndex === -1) dayIndex = 6;
+        const tag = s.tag_name;
+        dayData[dayIndex].tags[tag] =
+          (dayData[dayIndex].tags[tag] || 0) + s.duration_seconds;
+        dayData[dayIndex].totalSec += s.duration_seconds;
+      }
     });
 
     const maxSec = Math.max(...dayData.map((d) => d.totalSec), 1);
-    return { dayData, maxSec };
+    return { dayData, maxSec, targetDate };
   };
   const weeklyChart = generateWeeklyData();
 
@@ -364,20 +392,16 @@ export default function Home() {
     const month = now.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayIndex = new Date(year, month, 1).getDay();
-
     const activeDays = new Set(
       sessions.map((s) => new Date(s.created_at).getDate()),
     );
     const days = [];
-
     for (let i = 0; i < firstDayIndex; i++) days.push(null);
     for (let i = 1; i <= daysInMonth; i++) days.push(i);
-
     return { days, activeDays };
   };
   const calendar = generateCalendar();
 
-  // Date and Day Progress Formatters
   const getFormattedDate = (date: Date) => {
     const days = [
       "Sunday",
@@ -416,16 +440,20 @@ export default function Home() {
   };
 
   const clock = getAmPmTime(currentTime);
-  const dayProgressPct =
-    ((currentTime.getHours() * 3600 +
-      currentTime.getMinutes() * 60 +
-      currentTime.getSeconds()) /
-      86400) *
-    100;
+  const daySeconds =
+    currentTime.getHours() * 3600 +
+    currentTime.getMinutes() * 60 +
+    currentTime.getSeconds();
+  const dayProgressPct = (daySeconds / 86400) * 100;
+  const hoursLeft = Math.floor((86400 - daySeconds) / 3600);
+  const minsLeft = Math.floor(((86400 - daySeconds) % 3600) / 60);
+  const sessionProgressPct =
+    mode === "pomodoro"
+      ? Math.floor(100 - (timeInSeconds / initialTimeRef.current) * 100)
+      : 0;
 
   return (
     <main className="relative h-screen w-screen flex flex-col items-center justify-center text-white font-sans overflow-hidden select-none">
-      {/* BACKGROUND IMAGE */}
       <div className="absolute inset-0 z-[-1]">
         <Image
           src="/bg.jpg"
@@ -437,9 +465,9 @@ export default function Home() {
         <div className="absolute inset-0 bg-black/40 transition-all duration-700"></div>
       </div>
 
-      {/* TOP LEFT: Clock, Date & Day Progress */}
+      {/* TOP LEFT: Clock & Tooltip */}
       <div
-        className={`absolute top-8 left-8 flex flex-col items-start transition-opacity duration-500 ${isRunning && !isPaused ? "opacity-20" : "opacity-100"}`}
+        className={`absolute top-8 left-8 flex flex-col items-start transition-opacity duration-500 group ${isRunning && !isPaused ? "opacity-20" : "opacity-100"}`}
       >
         <div className="flex items-baseline tracking-tight drop-shadow-md">
           <span className="text-4xl font-semibold font-sans">{clock.time}</span>
@@ -450,16 +478,34 @@ export default function Home() {
         <div className="text-sm tracking-wide text-white/90 mt-1 mb-2 font-medium">
           {getFormattedDate(currentTime)}
         </div>
-        {/* Day Progress Bar */}
         <div className="w-48 h-1.5 bg-white/20 rounded-full overflow-hidden border border-white/10">
           <div
             className="h-full bg-white transition-all duration-1000 ease-linear"
             style={{ width: `${dayProgressPct}%` }}
           ></div>
         </div>
+
+        {/* Hover Tooltip for Day Progress */}
+        <div className="absolute top-20 left-0 w-48 p-4 bg-[#111]/90 backdrop-blur-xl border border-white/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none shadow-2xl z-50">
+          <div className="text-sm font-bold mb-2">
+            {Math.floor(dayProgressPct)}% complete
+          </div>
+          <div className="text-xs text-white/60 mb-1">
+            Your Day: <span className="font-bold text-white">00:00-23:59</span>
+          </div>
+          <div className="text-xs text-white/60 mb-2">
+            Ending in{" "}
+            <span className="font-bold text-white">
+              {hoursLeft} hr {minsLeft} mins
+            </span>
+          </div>
+          <div className="text-[10px] text-white/40">
+            Click Bar to edit schedule
+          </div>
+        </div>
       </div>
 
-      {/* TOP RIGHT - Streak & Today's Focus */}
+      {/* TOP RIGHT - Streak */}
       <div
         className={`absolute top-8 right-8 flex flex-col items-end gap-3 transition-opacity duration-500 ${isRunning && !isPaused ? "opacity-20" : "opacity-100"}`}
       >
@@ -480,6 +526,39 @@ export default function Home() {
         </div>
       </div>
 
+      {/* DELETE TAG CONFIRM MODAL */}
+      {tagToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md transition-opacity">
+          <div className="bg-[#111111]/95 border border-white/10 p-8 rounded-3xl shadow-2xl w-[350px] flex flex-col items-center text-center animate-in zoom-in-95 duration-200">
+            <h2 className="text-xl font-bold tracking-wide mb-2 text-white/90">
+              Delete Tag?
+            </h2>
+            <div className="w-full bg-black/40 border border-white/5 rounded-xl p-4 text-center text-xs mb-6 mt-4">
+              <span className="text-white/60 block">
+                Are you sure you want to delete the tag
+              </span>
+              <span className="text-orange-400 font-bold uppercase tracking-wider mt-1 block">
+                "{tagToDelete.name}"
+              </span>
+            </div>
+            <div className="flex gap-3 w-full">
+              <button
+                onClick={confirmDeleteTag}
+                className="flex-1 py-3 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-xl font-bold text-xs uppercase tracking-widest transition-all text-red-300"
+              >
+                Yes
+              </button>
+              <button
+                onClick={() => setTagToDelete(null)}
+                className="flex-1 py-3 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl font-bold text-xs uppercase tracking-widest transition-all text-white/50 hover:text-white"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* CONFIRM END SESSION POPUP */}
       {confirmEnd && confirmEnd.show && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md transition-opacity">
@@ -487,14 +566,12 @@ export default function Home() {
             <h2 className="text-xl font-bold tracking-wide mb-2 text-white/90">
               End Session?
             </h2>
-
             <div className="text-5xl font-bold tracking-tighter mb-4 text-white">
               {Math.floor(confirmEnd.elapsed / 60)}
               <span className="text-lg text-white/50 tracking-normal ml-1">
                 MIN
               </span>
             </div>
-
             <div className="w-full bg-black/40 border border-white/5 rounded-xl p-4 text-left text-xs mb-6">
               <span className="text-orange-400 font-bold uppercase tracking-wider mb-2 block text-center">
                 Warning
@@ -507,7 +584,6 @@ export default function Home() {
                 </li>
               </ul>
             </div>
-
             <div className="flex gap-3 w-full">
               <button
                 onClick={() => {
@@ -538,7 +614,7 @@ export default function Home() {
                 🔥 Daily Streak Updated!
               </div>
             )}
-            <h2 className="text-2xl font-bold mb-2">Session Saved!</h2>
+            <h2 className="text-2xl font-bold mb-2">Session Saved! 🎉</h2>
             <p className="text-sm text-white/60 mb-6">
               Congratulations, you logged{" "}
               <span className="text-white font-bold">
@@ -546,7 +622,6 @@ export default function Home() {
               </span>{" "}
               of focus.
             </p>
-
             <div className="w-full bg-black/40 border border-white/10 rounded-xl p-4 mb-6 text-sm flex flex-col gap-3">
               <div className="flex justify-between">
                 <span className="text-white/40">Subject / Tag</span>
@@ -563,7 +638,6 @@ export default function Home() {
                 <span className="font-mono">{popupData.pauses} pauses</span>
               </div>
             </div>
-
             <button
               onClick={() => setPopupData(null)}
               className="w-full py-3 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl font-bold text-xs uppercase tracking-widest transition-all active:scale-95"
@@ -577,39 +651,62 @@ export default function Home() {
       {/* MAIN WIDGET */}
       {isRunning ? (
         <div className="z-10 flex flex-col items-center scale-90 transition-all duration-500">
-          <div className="text-8xl md:text-9xl font-bold font-sans tracking-tighter drop-shadow-2xl mb-4">
-            {formatRunningTime(timeInSeconds)}
+          {/* Tag Moved to Top with Glass Styling */}
+          <div className="px-6 py-2.5 bg-white/10 border border-white/20 rounded-full font-bold text-xs uppercase tracking-widest backdrop-blur-md mb-8">
+            Focus Session - {selectedTag}
           </div>
 
-          {/* Progress Bar under timer (Only shows for Pomodoro mode) */}
-          {mode === "pomodoro" && (
-            <div className="w-72 h-1 bg-white/20 rounded-full mb-8 overflow-hidden">
-              <div
-                className="h-full bg-white transition-all duration-1000 ease-linear"
-                style={{
-                  width: `${100 - (timeInSeconds / initialTimeRef.current) * 100}%`,
-                }}
-              ></div>
-            </div>
-          )}
-          {mode === "stopwatch" && <div className="h-9"></div> /* Spacer */}
+          <div className="flex items-center gap-6">
+            {/* Decrease Time Button */}
+            <button
+              onClick={() => adjustTimer(-300)}
+              className="text-3xl text-white/40 hover:text-white transition-colors pb-2 active:scale-90 hidden md:block"
+            >
+              −
+            </button>
 
-          <div className="flex gap-4 items-center">
-            {/* Tag moved down next to buttons */}
-            <div className="px-6 py-3.5 bg-black/40 border border-white/10 rounded-full font-bold text-xs uppercase tracking-widest text-white/60">
-              {selectedTag}
+            <div className="flex flex-col items-center">
+              <div className="text-8xl md:text-9xl font-bold font-sans tracking-tighter drop-shadow-2xl mb-2">
+                {formatRunningTime(timeInSeconds)}
+              </div>
+
+              {/* Progress Bar with Percentage */}
+              {mode === "pomodoro" ? (
+                <div className="flex items-center gap-4 mb-8 w-80">
+                  <div className="flex-1 h-1 bg-white/20 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-white transition-all duration-1000 ease-linear"
+                      style={{ width: `${sessionProgressPct}%` }}
+                    ></div>
+                  </div>
+                  <span className="text-sm font-bold tracking-wider">
+                    {sessionProgressPct}%
+                  </span>
+                </div>
+              ) : (
+                <div className="h-10"></div>
+              )}
             </div>
 
+            {/* Increase Time Button */}
+            <button
+              onClick={() => adjustTimer(300)}
+              className="text-4xl text-white/40 hover:text-white transition-colors pb-2 active:scale-90 hidden md:block"
+            >
+              +
+            </button>
+          </div>
+
+          <div className="flex gap-4 items-center mt-2">
             <button
               onClick={togglePause}
-              className="px-8 py-3.5 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full font-bold text-xs uppercase tracking-widest backdrop-blur-md transition-all active:scale-95"
+              className="px-10 py-3.5 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full font-bold text-xs uppercase tracking-widest backdrop-blur-md transition-all active:scale-95"
             >
               {isPaused ? "Resume" : "Pause"}
             </button>
-
             <button
               onClick={triggerCompleteFlow}
-              className="px-8 py-3.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-full font-bold text-xs uppercase tracking-widest backdrop-blur-md transition-all active:scale-95"
+              className="px-10 py-3.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-full font-bold text-xs uppercase tracking-widest backdrop-blur-md transition-all active:scale-95"
             >
               Complete
             </button>
@@ -623,7 +720,6 @@ export default function Home() {
               <button
                 onClick={() => setShowWidget(false)}
                 className="text-white/50 hover:text-white transition p-1 grayscale"
-                title="Hide Widget"
               >
                 <svg
                   className="w-4 h-4"
@@ -691,7 +787,6 @@ export default function Home() {
                   </button>
                 )}
               </div>
-
               <div className="flex flex-wrap gap-1.5 max-h-[88px] overflow-y-auto">
                 {tags.map((t, i) => (
                   <div
@@ -720,7 +815,10 @@ export default function Home() {
                       </span>
                     )}
                     <button
-                      onClick={(e) => handleDeleteTag(i, e)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTagToDelete({ index: i, name: t });
+                      }}
                       className="text-white/30 hover:text-white ml-1 font-bold"
                     >
                       ×
@@ -752,7 +850,6 @@ export default function Home() {
             >
               Start Session
             </button>
-
             <div className="text-[10px] text-white/40 tracking-wide text-center">
               {mode === "pomodoro" ? (
                 <>
@@ -820,7 +917,6 @@ export default function Home() {
                 <p className="text-xs text-white/40 mb-6">
                   Summary of your completed study sessions today.
                 </p>
-
                 <div className="grid grid-cols-2 gap-4 mb-6">
                   <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">
@@ -839,7 +935,6 @@ export default function Home() {
                     </div>
                   </div>
                 </div>
-
                 <h3 className="text-xs font-bold uppercase tracking-wider text-white/50 mb-3">
                   Time Per Tag (Today)
                 </h3>
@@ -884,9 +979,26 @@ export default function Home() {
 
                 {timeframe === "weekly" ? (
                   <div className="bg-[#111] border border-white/10 rounded-2xl p-5 mb-6">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-white/50 mb-4 text-center">
-                      Weekly Tag Distribution
-                    </h3>
+                    <div className="flex justify-between items-center mb-4">
+                      <button
+                        onClick={() => setWeekOffset((w) => w + 1)}
+                        className="text-white/40 hover:text-white p-1"
+                      >
+                        ← Last Week
+                      </button>
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-white/50">
+                        {weekOffset === 0
+                          ? "This Week"
+                          : `${weekOffset} Week(s) Ago`}
+                      </h3>
+                      <button
+                        onClick={() => setWeekOffset((w) => Math.max(0, w - 1))}
+                        className={`p-1 ${weekOffset === 0 ? "text-transparent cursor-default" : "text-white/40 hover:text-white"}`}
+                      >
+                        Next Week →
+                      </button>
+                    </div>
+
                     <div className="h-40 flex items-end justify-between gap-3 px-2">
                       {weeklyChart.dayData.map((data) => (
                         <div
