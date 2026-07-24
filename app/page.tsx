@@ -47,7 +47,7 @@ export default function Home() {
   const [inputMins, setInputMins] = useState("25");
   const [timeInSeconds, setTimeInSeconds] = useState(25 * 60);
 
-  const [sessionTitle, setSessionTitle] = useState("Coding");
+  const [sessionTitle, setSessionTitle] = useState("Focus Session");
   const initialTimeRef = useRef(25 * 60);
   const sessionStartTimeRef = useRef<Date | null>(null);
   const [pauseCount, setPauseCount] = useState(0);
@@ -107,11 +107,11 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
-  // Audio Engine
+  // Soft, Aesthetic Audio Engine
   const playSound = (url: string) => {
     try {
       const audio = new Audio(url);
-      audio.volume = 0.5;
+      audio.volume = 0.4;
       audio.play();
     } catch (e) {
       console.log("Audio playback blocked.");
@@ -120,20 +120,20 @@ export default function Home() {
 
   const playStartSound = () =>
     playSound(
-      "https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3",
-    );
-  const playSuccessSound = () =>
-    playSound(
-      "https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3",
-    );
+      "https://assets.mixkit.co/active_storage/sfx/2870/2870-preview.mp3",
+    ); // Subtle modern click
   const playPauseSound = () =>
     playSound(
       "https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3",
-    );
+    ); // Soft pop
   const playResumeSound = () =>
     playSound(
-      "https://assets.mixkit.co/active_storage/sfx/2569/2569-preview.mp3",
-    );
+      "https://assets.mixkit.co/active_storage/sfx/2573/2573-preview.mp3",
+    ); // Clean rise pop
+  const playSuccessSound = () =>
+    playSound(
+      "https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3",
+    ); // Soothing ambient chime
 
   const executeCompleteSession = async (durationSec: number) => {
     if (durationSec < 300) {
@@ -337,10 +337,10 @@ export default function Home() {
 
   const startedDayTime =
     todaySessions.length > 0
-      ? new Date(todaySessions[0].created_at).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        })
+      ? new Date(
+          new Date(todaySessions[0].created_at).getTime() -
+            todaySessions[0].duration_seconds * 1000,
+        ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       : "-";
   const endedDayTime =
     todaySessions.length > 0
@@ -349,12 +349,16 @@ export default function Home() {
         ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       : "-";
 
-  // Productivity % Calculation (vs 11 Hrs 11 Mins goal = 40260 seconds)
-  const targetGoalSeconds = 11 * 3600 + 11 * 60;
-  const productivityScore = Math.min(
-    100,
-    Math.floor((todayTotalSeconds / targetGoalSeconds) * 100),
-  );
+  // Productivity % compared strictly to yesterday
+  const productivityScore =
+    yesterdayTotalSeconds === 0
+      ? todayTotalSeconds > 0
+        ? 100
+        : 0
+      : Math.min(
+          100,
+          Math.floor((todayTotalSeconds / yesterdayTotalSeconds) * 100),
+        );
 
   const trendPercent =
     yesterdayTotalSeconds > 0
@@ -367,26 +371,14 @@ export default function Home() {
         ? 100
         : 0;
 
-  const getTagTime = (tagName: string, filterTodayOnly = true) => {
-    const targetSessions = filterTodayOnly ? todaySessions : sessions;
-    const totalSec = targetSessions
-      .filter((s) => s.tag_name === tagName)
-      .reduce((acc, s) => acc + s.duration_seconds, 0);
-    const hrs = Math.floor(totalSec / 3600);
-    const mins = Math.floor((totalSec % 3600) / 60);
-    return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
-  };
-
   const calculateStreaks = () => {
-    if (sessions.length === 0) return { currentStreak: 0, maxStreak: 0 };
+    if (sessions.length === 0) return { currentStreak: 0 };
     const uniqueDays = Array.from(
       new Set(
         sessions.map((s) => new Date(s.created_at).toISOString().split("T")[0]),
       ),
     ).sort();
     let currentStreak = 0,
-      maxStreak = 0,
-      tempStreak = 0,
       checkDate = new Date();
     while (true) {
       const dateStr = checkDate.toISOString().split("T")[0];
@@ -397,20 +389,7 @@ export default function Home() {
         checkDate.setDate(checkDate.getDate() - 1);
       } else break;
     }
-    for (let i = 0; i < uniqueDays.length; i++) {
-      if (i === 0) tempStreak = 1;
-      else {
-        const diffDays = Math.round(
-          (new Date(uniqueDays[i]).getTime() -
-            new Date(uniqueDays[i - 1]).getTime()) /
-            86400000,
-        );
-        if (diffDays === 1) tempStreak++;
-        else tempStreak = 1;
-      }
-      if (tempStreak > maxStreak) maxStreak = tempStreak;
-    }
-    return { currentStreak, maxStreak };
+    return { currentStreak };
   };
 
   const { currentStreak } = calculateStreaks();
@@ -458,7 +437,7 @@ export default function Home() {
   };
   const weeklyChart = generateWeeklyData();
 
-  // Pie Chart Data Generator
+  // Pie Chart Data Generator using CSS Conic Gradients
   const generatePieData = () => {
     const tagTotals: Record<string, number> = {};
     let grandTotal = 0;
@@ -491,7 +470,12 @@ export default function Home() {
       };
     });
 
-    return { slices, grandTotal };
+    const gradientString = slices
+      .filter((s) => parseFloat(s.percent) > 0)
+      .map((s) => `${s.color} ${s.startAngle}deg ${s.endAngle}deg`)
+      .join(", ");
+
+    return { slices, grandTotal, gradientString };
   };
   const pieData = generatePieData();
 
@@ -558,6 +542,15 @@ export default function Home() {
       ? Math.floor(100 - (timeInSeconds / initialTimeRef.current) * 100)
       : 0;
 
+  // Helper for Session Start/End Formatting
+  const formatSessionTimes = (createdAtStr: string, durationSec: number) => {
+    const end = new Date(createdAtStr);
+    const start = new Date(end.getTime() - durationSec * 1000);
+    const format = (d: Date) =>
+      d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return `${format(start)} - ${format(end)}`;
+  };
+
   return (
     <main className="relative h-screen w-screen flex flex-col items-center justify-center text-white font-sans overflow-hidden select-none">
       {/* Custom Global Scrollbar Style */}
@@ -578,7 +571,6 @@ export default function Home() {
         }
       `}</style>
 
-      {/* BACKGROUND */}
       <div className="absolute inset-0 z-[-1]">
         <Image
           src="/bg.jpg"
@@ -758,6 +750,10 @@ export default function Home() {
                   {popupData.startTime} - {popupData.endTime}
                 </span>
               </div>
+              <div className="flex justify-between">
+                <span className="text-white/40">Interruptions</span>
+                <span className="font-mono">{popupData.pauses} pauses</span>
+              </div>
             </div>
             <button
               onClick={() => setPopupData(null)}
@@ -772,9 +768,14 @@ export default function Home() {
       {/* MAIN WIDGET */}
       {isRunning ? (
         <div className="z-10 flex flex-col items-center scale-90 transition-all duration-500">
-          {/* Top Glassmorphism Tag Bar */}
-          <div className="px-6 py-2 bg-white/10 border border-white/20 rounded-full font-bold text-xs uppercase tracking-widest backdrop-blur-md mb-8">
-            FOCUS SESSION - {sessionTitle.toUpperCase()}
+          {/* Top Glassmorphism Pills Side-by-Side */}
+          <div className="flex gap-3 mb-8">
+            <div className="px-5 py-2.5 bg-white/10 border border-white/20 rounded-full font-bold text-[10px] uppercase tracking-widest backdrop-blur-md">
+              {selectedTag}
+            </div>
+            <div className="px-5 py-2.5 bg-white/10 border border-white/20 rounded-full font-bold text-[10px] uppercase tracking-widest backdrop-blur-md text-white/80">
+              {sessionTitle || "Focus Session"}
+            </div>
           </div>
 
           <div className="flex items-center gap-6">
@@ -916,7 +917,7 @@ export default function Home() {
                   </button>
                 )}
               </div>
-              <div className="flex flex-wrap gap-1.5 max-h-[88px] overflow-y-auto">
+              <div className="flex flex-wrap gap-1.5 max-h-[88px] overflow-y-auto pr-1">
                 {tags.map((t, i) => (
                   <div
                     key={i}
@@ -1041,7 +1042,7 @@ export default function Home() {
           {/* Main Panel Content */}
           <div className="flex-1 pl-6 overflow-y-auto pr-2">
             {statsSubTab === "today" ? (
-              /* TODAY'S STATS PANEL (Recreated from edited-image.png) */
+              /* TODAY'S STATS PANEL */
               <div className="grid grid-cols-2 gap-6 h-full items-start">
                 {/* Left Panel */}
                 <div className="flex flex-col gap-5 border-r border-white/10 pr-6">
@@ -1102,8 +1103,12 @@ export default function Home() {
                               <span className="font-semibold text-white/90">
                                 {s.session_title || "Focus Session"}
                               </span>
-                              <span className="text-[9px] text-white/40">
-                                {s.tag_name}
+                              <span className="text-[9px] text-white/40 mt-0.5">
+                                {s.tag_name} |{" "}
+                                {formatSessionTimes(
+                                  s.created_at,
+                                  s.duration_seconds,
+                                )}
                               </span>
                             </div>
                             <span className="font-mono text-white/60">
@@ -1173,9 +1178,11 @@ export default function Home() {
                     <span className="text-[10px] text-white/30 block mt-0.5">
                       compared to yesterday
                     </span>
+
+                    {/* Fixed Yesterday Comparison Text */}
                     <span className="text-xs font-mono text-white/60 block mt-2">
-                      Focus Time: {todayHours * 60 + todayMins} Min / 11 Hrs 11
-                      Mins
+                      Focus Time: {todayHours * 60 + todayMins} Min (Yesterday:{" "}
+                      {Math.floor(yesterdayTotalSeconds / 60)} Min)
                     </span>
                   </div>
                 </div>
@@ -1214,6 +1221,8 @@ export default function Home() {
                         <h3 className="text-xs font-bold uppercase tracking-wider text-white/70">
                           Focus by Tags [Daily]
                         </h3>
+
+                        {/* Toggle injected here */}
                         <div className="flex bg-black/40 border border-white/10 p-0.5 rounded-lg text-[9px]">
                           <button
                             onClick={() => setChartMetric("mins")}
@@ -1276,68 +1285,62 @@ export default function Home() {
 
                     {/* Tags Ratio Pie Chart */}
                     <div className="bg-[#111115] border border-white/10 rounded-2xl p-5 flex flex-col items-center">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-white/70 mb-4 self-start">
-                        Tags Ratio Breakdown
-                      </h3>
+                      <div className="flex justify-between items-center w-full mb-4">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-white/70">
+                          Tags Ratio Breakdown
+                        </h3>
+                        <div className="flex bg-black/40 border border-white/10 p-0.5 rounded-lg text-[9px]">
+                          <button
+                            onClick={() => setChartMetric("mins")}
+                            className={`px-2 py-0.5 rounded font-bold transition ${chartMetric === "mins" ? "bg-white/20 text-white" : "text-white/40"}`}
+                          >
+                            Duration [Mins]
+                          </button>
+                          <button
+                            onClick={() => setChartMetric("count")}
+                            className={`px-2 py-0.5 rounded font-bold transition ${chartMetric === "count" ? "bg-white/20 text-white" : "text-white/40"}`}
+                          >
+                            Session Count
+                          </button>
+                        </div>
+                      </div>
 
                       {pieData.grandTotal === 0 ? (
                         <div className="py-8 text-xs text-white/30">
                           No session data logged yet for pie chart
                         </div>
                       ) : (
-                        <div className="flex items-center gap-8 py-2">
-                          {/* SVG Pie Chart */}
-                          <div className="w-36 h-36 relative">
-                            <svg
-                              className="w-full h-full transform -rotate-90"
-                              viewBox="0 0 32 32"
-                            >
-                              {pieData.slices.map((slice, i) => {
-                                if (parseFloat(slice.percent) === 0)
-                                  return null;
-                                const strokeDash = `${slice.percent} ${100 - parseFloat(slice.percent)}`;
-                                let offset = 0;
-                                for (let j = 0; j < i; j++) {
-                                  offset += parseFloat(
-                                    pieData.slices[j].percent,
-                                  );
-                                }
-                                return (
-                                  <circle
-                                    key={i}
-                                    cx="16"
-                                    cy="16"
-                                    r="15.91549430918954"
-                                    fill="transparent"
-                                    stroke={slice.color}
-                                    strokeWidth="32"
-                                    strokeDasharray={strokeDash}
-                                    strokeDashoffset={-offset}
-                                  />
-                                );
-                              })}
-                            </svg>
-                          </div>
+                        <div className="flex items-center gap-12 py-2 w-full justify-center">
+                          {/* CSS Conic Gradient Pie Chart (Perfect Circle) */}
+                          <div
+                            className="w-36 h-36 rounded-full shadow-lg"
+                            style={{
+                              background: `conic-gradient(${pieData.gradientString})`,
+                            }}
+                          ></div>
 
                           {/* Legend */}
                           <div className="flex flex-col gap-1.5">
-                            {pieData.slices.map((slice, i) => (
-                              <div
-                                key={i}
-                                className="flex items-center gap-2 text-xs"
-                              >
-                                <span
-                                  className="w-3 h-3 rounded-full"
-                                  style={{ backgroundColor: slice.color }}
-                                ></span>
-                                <span className="text-white/80 font-medium">
-                                  {slice.tag}:
-                                </span>
-                                <span className="font-mono text-white/40">
-                                  {slice.percent}%
-                                </span>
-                              </div>
-                            ))}
+                            {pieData.slices.map((slice, i) => {
+                              if (parseFloat(slice.percent) === 0) return null;
+                              return (
+                                <div
+                                  key={i}
+                                  className="flex items-center gap-2 text-xs"
+                                >
+                                  <span
+                                    className="w-3 h-3 rounded-full shadow-md"
+                                    style={{ backgroundColor: slice.color }}
+                                  ></span>
+                                  <span className="text-white/80 font-medium">
+                                    {slice.tag}:
+                                  </span>
+                                  <span className="font-mono text-white/40">
+                                    {slice.percent}%
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -1367,7 +1370,6 @@ export default function Home() {
                             ></div>
                           );
 
-                        // Calculate focus time for this calendar day
                         const dayDateISO = new Date(
                           new Date().getFullYear(),
                           new Date().getMonth(),
