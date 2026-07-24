@@ -8,17 +8,28 @@ interface SessionRecord {
   id?: number;
   created_at: string;
   tag_name: string;
+  session_title?: string;
   duration_seconds: number;
 }
 
 const tagColors = [
-  "bg-[#1e3a8a]",
-  "bg-[#064e3b]",
-  "bg-[#78350f]",
-  "bg-[#4c1d95]",
-  "bg-[#831843]",
-  "bg-[#14532d]",
-  "bg-[#312e81]",
+  "#3b82f6", // Blue
+  "#10b981", // Emerald
+  "#f59e0b", // Amber
+  "#ef4444", // Red
+  "#8b5cf6", // Purple
+  "#ec4899", // Pink
+  "#06b6d4", // Cyan
+];
+
+const tagTailwindBg = [
+  "bg-blue-500",
+  "bg-emerald-500",
+  "bg-amber-500",
+  "bg-red-500",
+  "bg-purple-500",
+  "bg-pink-500",
+  "bg-cyan-500",
 ];
 
 export default function Home() {
@@ -26,7 +37,8 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<"focus" | "stats">("focus");
   const [statsSubTab, setStatsSubTab] = useState<"today" | "general">("today");
   const [timeframe, setTimeframe] = useState<"weekly" | "monthly">("weekly");
-  const [weekOffset, setWeekOffset] = useState(0); // 0 = current week, 1 = 1 week ago
+  const [chartMetric, setChartMetric] = useState<"mins" | "count">("mins");
+  const [weekOffset, setWeekOffset] = useState(0);
 
   const [mode, setMode] = useState<"pomodoro" | "stopwatch">("pomodoro");
   const [isRunning, setIsRunning] = useState(false);
@@ -35,6 +47,7 @@ export default function Home() {
   const [inputMins, setInputMins] = useState("25");
   const [timeInSeconds, setTimeInSeconds] = useState(25 * 60);
 
+  const [sessionTitle, setSessionTitle] = useState("Coding");
   const initialTimeRef = useRef(25 * 60);
   const sessionStartTimeRef = useRef<Date | null>(null);
   const [pauseCount, setPauseCount] = useState(0);
@@ -94,29 +107,33 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
-  // Sounds
+  // Audio Engine
   const playSound = (url: string) => {
     try {
       const audio = new Audio(url);
       audio.volume = 0.5;
       audio.play();
     } catch (e) {
-      console.log("Audio play blocked by browser, ignoring.");
+      console.log("Audio playback blocked.");
     }
   };
 
+  const playStartSound = () =>
+    playSound(
+      "https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3",
+    );
   const playSuccessSound = () =>
     playSound(
       "https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3",
-    ); // Celebration sound
+    );
   const playPauseSound = () =>
     playSound(
       "https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3",
-    ); // Short bell 1
+    );
   const playResumeSound = () =>
     playSound(
-      "https://assets.mixkit.co/active_storage/sfx/2570/2570-preview.mp3",
-    ); // Short bell 2
+      "https://assets.mixkit.co/active_storage/sfx/2569/2569-preview.mp3",
+    );
 
   const executeCompleteSession = async (durationSec: number) => {
     if (durationSec < 300) {
@@ -136,7 +153,11 @@ export default function Home() {
     );
     const isFirstOfDay = todaySessions.length === 0;
 
-    const newRecord = { tag_name: selectedTag, duration_seconds: durationSec };
+    const newRecord = {
+      tag_name: selectedTag,
+      session_title: sessionTitle || "Focus Session",
+      duration_seconds: durationSec,
+    };
     const optimisticRecord = {
       ...newRecord,
       created_at: new Date().toISOString(),
@@ -190,6 +211,7 @@ export default function Home() {
   }, [isRunning, isPaused, mode, selectedTag, confirmEnd]);
 
   const handleStart = () => {
+    playStartSound();
     if (mode === "pomodoro") {
       const hrs = parseInt(inputHrs) || 0;
       const mins = parseInt(inputMins) || 0;
@@ -288,17 +310,62 @@ export default function Home() {
     await supabase.from("tags").delete().eq("name", name);
   };
 
-  // --- STATS CALCULATIONS ---
+  // --- CALCULATIONS & STATS ---
   const todayStr = new Date().toISOString().split("T")[0];
+  const yesterdayStr = new Date(Date.now() - 86400000)
+    .toISOString()
+    .split("T")[0];
+
   const todaySessions = sessions.filter(
     (s) => new Date(s.created_at).toISOString().split("T")[0] === todayStr,
   );
+  const yesterdaySessions = sessions.filter(
+    (s) => new Date(s.created_at).toISOString().split("T")[0] === yesterdayStr,
+  );
+
   const todayTotalSeconds = todaySessions.reduce(
     (acc, s) => acc + s.duration_seconds,
     0,
   );
+  const yesterdayTotalSeconds = yesterdaySessions.reduce(
+    (acc, s) => acc + s.duration_seconds,
+    0,
+  );
+
   const todayHours = Math.floor(todayTotalSeconds / 3600);
   const todayMins = Math.floor((todayTotalSeconds % 3600) / 60);
+
+  const startedDayTime =
+    todaySessions.length > 0
+      ? new Date(todaySessions[0].created_at).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "-";
+  const endedDayTime =
+    todaySessions.length > 0
+      ? new Date(
+          todaySessions[todaySessions.length - 1].created_at,
+        ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : "-";
+
+  // Productivity % Calculation (vs 11 Hrs 11 Mins goal = 40260 seconds)
+  const targetGoalSeconds = 11 * 3600 + 11 * 60;
+  const productivityScore = Math.min(
+    100,
+    Math.floor((todayTotalSeconds / targetGoalSeconds) * 100),
+  );
+
+  const trendPercent =
+    yesterdayTotalSeconds > 0
+      ? Math.floor(
+          ((todayTotalSeconds - yesterdayTotalSeconds) /
+            yesterdayTotalSeconds) *
+            100,
+        )
+      : todayTotalSeconds > 0
+        ? 100
+        : 0;
 
   const getTagTime = (tagName: string, filterTodayOnly = true) => {
     const targetSessions = filterTodayOnly ? todaySessions : sessions;
@@ -346,45 +413,87 @@ export default function Home() {
     return { currentStreak, maxStreak };
   };
 
-  const { currentStreak, maxStreak } = calculateStreaks();
+  const { currentStreak } = calculateStreaks();
 
   const generateWeeklyData = () => {
     const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     const dayData = weekDays.map((day) => ({
       day,
+      dateStr: "",
       tags: {} as Record<string, number>,
-      totalSec: 0,
+      totalValue: 0,
     }));
 
-    // Calculate the target week's Monday
-    const targetDate = new Date();
-    targetDate.setDate(
-      targetDate.getDate() -
-        targetDate.getDay() +
-        (targetDate.getDay() === 0 ? -6 : 1) -
-        weekOffset * 7,
-    );
-    targetDate.setHours(0, 0, 0, 0);
+    const curr = new Date();
+    const first =
+      curr.getDate() -
+      curr.getDay() +
+      (curr.getDay() === 0 ? -6 : 1) -
+      weekOffset * 7;
+    const monday = new Date(curr.setDate(first));
+    monday.setHours(0, 0, 0, 0);
 
-    sessions.forEach((s) => {
-      const d = new Date(s.created_at);
-      const diffTime = d.getTime() - targetDate.getTime();
-      const diffDays = Math.floor(diffTime / (1000 * 3600 * 24));
+    for (let i = 0; i < 7; i++) {
+      const dayDate = new Date(monday);
+      dayDate.setDate(monday.getDate() + i);
+      const dStr = `${dayDate.getDate()} ${dayDate.toLocaleString("default", { month: "short" })}`;
+      dayData[i].dateStr = dStr;
 
-      if (diffDays >= 0 && diffDays < 7) {
-        let dayIndex = d.getDay() - 1;
-        if (dayIndex === -1) dayIndex = 6;
-        const tag = s.tag_name;
-        dayData[dayIndex].tags[tag] =
-          (dayData[dayIndex].tags[tag] || 0) + s.duration_seconds;
-        dayData[dayIndex].totalSec += s.duration_seconds;
-      }
-    });
+      const dateISO = dayDate.toISOString().split("T")[0];
+      const daysSessions = sessions.filter(
+        (s) => new Date(s.created_at).toISOString().split("T")[0] === dateISO,
+      );
 
-    const maxSec = Math.max(...dayData.map((d) => d.totalSec), 1);
-    return { dayData, maxSec, targetDate };
+      daysSessions.forEach((s) => {
+        const value =
+          chartMetric === "mins" ? Math.floor(s.duration_seconds / 60) : 1;
+        dayData[i].tags[s.tag_name] =
+          (dayData[i].tags[s.tag_name] || 0) + value;
+        dayData[i].totalValue += value;
+      });
+    }
+
+    const maxValue = Math.max(...dayData.map((d) => d.totalValue), 1);
+    return { dayData, maxValue };
   };
   const weeklyChart = generateWeeklyData();
+
+  // Pie Chart Data Generator
+  const generatePieData = () => {
+    const tagTotals: Record<string, number> = {};
+    let grandTotal = 0;
+
+    tags.forEach((t) => {
+      const sec = sessions
+        .filter((s) => s.tag_name === t)
+        .reduce((acc, s) => acc + s.duration_seconds, 0);
+      const val =
+        chartMetric === "mins"
+          ? Math.floor(sec / 60)
+          : sessions.filter((s) => s.tag_name === t).length;
+      tagTotals[t] = val;
+      grandTotal += val;
+    });
+
+    let cumulativePercent = 0;
+    const slices = tags.map((t, index) => {
+      const value = tagTotals[t] || 0;
+      const percent = grandTotal > 0 ? (value / grandTotal) * 100 : 0;
+      const startAngle = (cumulativePercent / 100) * 360;
+      cumulativePercent += percent;
+      const endAngle = (cumulativePercent / 100) * 360;
+      return {
+        tag: t,
+        percent: percent.toFixed(1),
+        color: tagColors[index % tagColors.length],
+        startAngle,
+        endAngle,
+      };
+    });
+
+    return { slices, grandTotal };
+  };
+  const pieData = generatePieData();
 
   const generateCalendar = () => {
     const now = new Date();
@@ -392,13 +501,10 @@ export default function Home() {
     const month = now.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayIndex = new Date(year, month, 1).getDay();
-    const activeDays = new Set(
-      sessions.map((s) => new Date(s.created_at).getDate()),
-    );
     const days = [];
     for (let i = 0; i < firstDayIndex; i++) days.push(null);
     for (let i = 1; i <= daysInMonth; i++) days.push(i);
-    return { days, activeDays };
+    return { days };
   };
   const calendar = generateCalendar();
 
@@ -454,6 +560,25 @@ export default function Home() {
 
   return (
     <main className="relative h-screen w-screen flex flex-col items-center justify-center text-white font-sans overflow-hidden select-none">
+      {/* Custom Global Scrollbar Style */}
+      <style jsx global>{`
+        ::-webkit-scrollbar {
+          width: 5px;
+          height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+          background: rgba(0, 0, 0, 0.2);
+        }
+        ::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.2);
+          border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.4);
+        }
+      `}</style>
+
+      {/* BACKGROUND */}
       <div className="absolute inset-0 z-[-1]">
         <Image
           src="/bg.jpg"
@@ -485,22 +610,16 @@ export default function Home() {
           ></div>
         </div>
 
-        {/* Hover Tooltip for Day Progress */}
-        <div className="absolute top-20 left-0 w-48 p-4 bg-[#111]/90 backdrop-blur-xl border border-white/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none shadow-2xl z-50">
-          <div className="text-sm font-bold mb-2">
+        {/* Clean Hover Tooltip */}
+        <div className="absolute top-20 left-0 w-48 p-3.5 bg-[#111]/90 backdrop-blur-xl border border-white/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none shadow-2xl z-50">
+          <div className="text-sm font-bold">
             {Math.floor(dayProgressPct)}% complete
           </div>
-          <div className="text-xs text-white/60 mb-1">
-            Your Day: <span className="font-bold text-white">00:00-23:59</span>
-          </div>
-          <div className="text-xs text-white/60 mb-2">
+          <div className="text-xs text-white/60 mt-1">
             Ending in{" "}
             <span className="font-bold text-white">
               {hoursLeft} hr {minsLeft} mins
             </span>
-          </div>
-          <div className="text-[10px] text-white/40">
-            Click Bar to edit schedule
           </div>
         </div>
       </div>
@@ -605,7 +724,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* SUCCESS COMPLETION POPUP */}
+      {/* SUCCESS POPUP */}
       {popupData && popupData.show && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md transition-opacity">
           <div className="bg-[#111111]/90 border border-white/10 p-8 rounded-3xl shadow-2xl w-[400px] flex flex-col items-center text-center animate-in zoom-in-95 duration-300">
@@ -616,7 +735,7 @@ export default function Home() {
             )}
             <h2 className="text-2xl font-bold mb-2">Session Saved! 🎉</h2>
             <p className="text-sm text-white/60 mb-6">
-              Congratulations, you logged{" "}
+              Logged{" "}
               <span className="text-white font-bold">
                 {popupData.durationStr}
               </span>{" "}
@@ -624,7 +743,13 @@ export default function Home() {
             </p>
             <div className="w-full bg-black/40 border border-white/10 rounded-xl p-4 mb-6 text-sm flex flex-col gap-3">
               <div className="flex justify-between">
-                <span className="text-white/40">Subject / Tag</span>
+                <span className="text-white/40">Title</span>
+                <span className="font-semibold text-orange-300">
+                  {sessionTitle}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-white/40">Tag</span>
                 <span className="font-semibold">{selectedTag}</span>
               </div>
               <div className="flex justify-between">
@@ -632,10 +757,6 @@ export default function Home() {
                 <span className="font-mono">
                   {popupData.startTime} - {popupData.endTime}
                 </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-white/40">Interruptions</span>
-                <span className="font-mono">{popupData.pauses} pauses</span>
               </div>
             </div>
             <button
@@ -651,13 +772,12 @@ export default function Home() {
       {/* MAIN WIDGET */}
       {isRunning ? (
         <div className="z-10 flex flex-col items-center scale-90 transition-all duration-500">
-          {/* Tag Moved to Top with Glass Styling */}
-          <div className="px-6 py-2.5 bg-white/10 border border-white/20 rounded-full font-bold text-xs uppercase tracking-widest backdrop-blur-md mb-8">
-            Focus Session - {selectedTag}
+          {/* Top Glassmorphism Tag Bar */}
+          <div className="px-6 py-2 bg-white/10 border border-white/20 rounded-full font-bold text-xs uppercase tracking-widest backdrop-blur-md mb-8">
+            FOCUS SESSION - {sessionTitle.toUpperCase()}
           </div>
 
           <div className="flex items-center gap-6">
-            {/* Decrease Time Button */}
             <button
               onClick={() => adjustTimer(-300)}
               className="text-3xl text-white/40 hover:text-white transition-colors pb-2 active:scale-90 hidden md:block"
@@ -670,7 +790,6 @@ export default function Home() {
                 {formatRunningTime(timeInSeconds)}
               </div>
 
-              {/* Progress Bar with Percentage */}
               {mode === "pomodoro" ? (
                 <div className="flex items-center gap-4 mb-8 w-80">
                   <div className="flex-1 h-1 bg-white/20 rounded-full overflow-hidden">
@@ -688,7 +807,6 @@ export default function Home() {
               )}
             </div>
 
-            {/* Increase Time Button */}
             <button
               onClick={() => adjustTimer(300)}
               className="text-4xl text-white/40 hover:text-white transition-colors pb-2 active:scale-90 hidden md:block"
@@ -715,7 +833,7 @@ export default function Home() {
       ) : (
         showWidget &&
         activeTab === "focus" && (
-          <div className="z-10 flex flex-col items-center p-5 bg-[#111111]/85 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl w-[310px] -translate-y-6 transition-all">
+          <div className="z-10 flex flex-col items-center p-5 bg-[#111111]/85 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl w-[320px] -translate-y-6 transition-all">
             <div className="w-full flex justify-between items-center mb-4 px-1">
               <button
                 onClick={() => setShowWidget(false)}
@@ -739,6 +857,17 @@ export default function Home() {
                 {mode === "pomodoro" ? "Pomodoro" : "Stopwatch"}
               </h2>
               <div className="w-4" />
+            </div>
+
+            {/* Editable Session Title */}
+            <div className="w-full mb-3 px-1">
+              <input
+                type="text"
+                value={sessionTitle}
+                onChange={(e) => setSessionTitle(e.target.value)}
+                placeholder="Session Name (e.g. Coding)..."
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-center font-medium outline-none focus:border-white/40 transition-colors text-white"
+              />
             </div>
 
             {mode === "pomodoro" ? (
@@ -877,10 +1006,11 @@ export default function Home() {
         )
       )}
 
-      {/* STATS MODAL */}
+      {/* STATS MODAL OVERLAY */}
       {activeTab === "stats" && (
-        <div className="z-20 flex bg-[#0c0c0e]/90 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl w-[720px] max-w-[92vw] h-[440px] p-6 transition-all -translate-y-4">
-          <div className="w-48 border-r border-white/10 pr-4 flex flex-col justify-between">
+        <div className="z-20 flex bg-[#0a0a0c]/90 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl w-[820px] max-w-[95vw] h-[520px] p-6 transition-all -translate-y-2 overflow-hidden">
+          {/* Sidebar */}
+          <div className="w-44 border-r border-white/10 pr-4 flex flex-col justify-between">
             <div>
               <h3 className="text-xs font-bold uppercase tracking-widest text-white/40 mb-6">
                 Stats Menu
@@ -908,51 +1038,150 @@ export default function Home() {
             </button>
           </div>
 
-          <div className="flex-1 pl-6 overflow-y-auto">
+          {/* Main Panel Content */}
+          <div className="flex-1 pl-6 overflow-y-auto pr-2">
             {statsSubTab === "today" ? (
-              <div>
-                <h2 className="text-2xl font-bold mb-1">
-                  Today's Focus <span className="grayscale">☀️</span>
-                </h2>
-                <p className="text-xs text-white/40 mb-6">
-                  Summary of your completed study sessions today.
-                </p>
-                <div className="grid grid-cols-2 gap-4 mb-6">
-                  <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">
-                      Total Hours Today
+              /* TODAY'S STATS PANEL (Recreated from edited-image.png) */
+              <div className="grid grid-cols-2 gap-6 h-full items-start">
+                {/* Left Panel */}
+                <div className="flex flex-col gap-5 border-r border-white/10 pr-6">
+                  <div>
+                    <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
+                      Focus | {new Date().getDate()}{" "}
+                      {new Date().toLocaleString("default", { month: "short" })}{" "}
+                      '26
                     </span>
-                    <div className="text-3xl font-bold font-mono mt-2 text-white">
-                      {todayHours}h {todayMins}m
+                    <div className="text-5xl font-bold font-sans mt-1">
+                      {todayHours * 60 + todayMins} Min
                     </div>
                   </div>
-                  <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">
-                      Sessions Done
-                    </span>
-                    <div className="text-3xl font-bold font-mono mt-2 text-white">
-                      {todaySessions.length}
+
+                  <div className="grid grid-cols-3 gap-2 border-y border-white/10 py-3 text-center">
+                    <div>
+                      <span className="text-[9px] text-white/40 uppercase block font-bold">
+                        Started Day
+                      </span>
+                      <span className="text-xs font-bold mt-1 block">
+                        {startedDayTime}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] text-white/40 uppercase block font-bold">
+                        Day Ended
+                      </span>
+                      <span className="text-xs font-bold mt-1 block">
+                        {endedDayTime}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] text-white/40 uppercase block font-bold">
+                        Focus Count
+                      </span>
+                      <span className="text-xs font-bold mt-1 block">
+                        {todaySessions.length}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-white/60 mb-3">
+                      Breakdown by Sessions
+                    </h4>
+                    <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
+                      {todaySessions.length === 0 ? (
+                        <div className="text-xs text-white/30 py-4 text-center">
+                          No sessions completed today
+                        </div>
+                      ) : (
+                        todaySessions.map((s, idx) => (
+                          <div
+                            key={idx}
+                            className="flex justify-between items-center bg-black/40 border border-white/5 px-3 py-2 rounded-xl text-xs"
+                          >
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-white/90">
+                                {s.session_title || "Focus Session"}
+                              </span>
+                              <span className="text-[9px] text-white/40">
+                                {s.tag_name}
+                              </span>
+                            </div>
+                            <span className="font-mono text-white/60">
+                              {Math.floor(s.duration_seconds / 60)} min
+                            </span>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 </div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-white/50 mb-3">
-                  Time Per Tag (Today)
-                </h3>
-                <div className="flex flex-col gap-2">
-                  {tags.map((tag) => (
-                    <div
-                      key={tag}
-                      className="flex justify-between items-center bg-black/30 border border-white/5 px-3.5 py-2 rounded-xl text-xs"
+
+                {/* Right Panel: Focus Score Ring */}
+                <div className="flex flex-col items-center justify-center pt-2">
+                  <h3 className="text-xl font-bold mb-1">Focus Score</h3>
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-white/30 mb-4">
+                    RING
+                  </span>
+
+                  {/* Ring SVG */}
+                  <div className="relative w-44 h-44 flex items-center justify-center">
+                    <svg
+                      className="w-full h-full transform -rotate-90"
+                      viewBox="0 0 100 100"
                     >
-                      <span className="font-medium text-white/80">{tag}</span>
-                      <span className="font-mono text-white/50">
-                        {getTagTime(tag, true)}
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="42"
+                        stroke="rgba(255,255,255,0.05)"
+                        strokeWidth="8"
+                        fill="transparent"
+                      />
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="42"
+                        stroke="#ffffff"
+                        strokeWidth="8"
+                        strokeDasharray="263.89"
+                        strokeDashoffset={
+                          263.89 - (263.89 * productivityScore) / 100
+                        }
+                        strokeLinecap="round"
+                        fill="transparent"
+                        className="transition-all duration-1000 ease-out"
+                      />
+                    </svg>
+                    <div className="absolute flex flex-col items-center">
+                      <span className="text-3xl font-bold font-sans">
+                        {productivityScore}%
+                      </span>
+                      <span className="text-[9px] text-white/40 uppercase tracking-widest">
+                        Productivity
                       </span>
                     </div>
-                  ))}
+                  </div>
+
+                  <div className="text-center mt-4">
+                    <span className="text-xs font-semibold">
+                      Trending{" "}
+                      <span className="text-emerald-400 font-bold">
+                        {trendPercent >= 0 ? "up" : "down"} by{" "}
+                        {Math.abs(trendPercent)}% ⬆️
+                      </span>
+                    </span>
+                    <span className="text-[10px] text-white/30 block mt-0.5">
+                      compared to yesterday
+                    </span>
+                    <span className="text-xs font-mono text-white/60 block mt-2">
+                      Focus Time: {todayHours * 60 + todayMins} Min / 11 Hrs 11
+                      Mins
+                    </span>
+                  </div>
                 </div>
               </div>
             ) : (
+              /* GENERAL STATS PANEL */
               <div>
                 <div className="flex justify-between items-center mb-1">
                   <h2 className="text-2xl font-bold">
@@ -974,76 +1203,153 @@ export default function Home() {
                   </div>
                 </div>
                 <p className="text-xs text-white/40 mb-6">
-                  Overall productivity record & streak metrics.
+                  Overall productivity breakdown and tags ratio analytics.
                 </p>
 
                 {timeframe === "weekly" ? (
-                  <div className="bg-[#111] border border-white/10 rounded-2xl p-5 mb-6">
-                    <div className="flex justify-between items-center mb-4">
-                      <button
-                        onClick={() => setWeekOffset((w) => w + 1)}
-                        className="text-white/40 hover:text-white p-1"
-                      >
-                        ← Last Week
-                      </button>
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-white/50">
-                        {weekOffset === 0
-                          ? "This Week"
-                          : `${weekOffset} Week(s) Ago`}
-                      </h3>
-                      <button
-                        onClick={() => setWeekOffset((w) => Math.max(0, w - 1))}
-                        className={`p-1 ${weekOffset === 0 ? "text-transparent cursor-default" : "text-white/40 hover:text-white"}`}
-                      >
-                        Next Week →
-                      </button>
+                  <div className="flex flex-col gap-6">
+                    {/* Weekly Stacked Chart */}
+                    <div className="bg-[#111115] border border-white/10 rounded-2xl p-5">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-white/70">
+                          Focus by Tags [Daily]
+                        </h3>
+                        <div className="flex bg-black/40 border border-white/10 p-0.5 rounded-lg text-[9px]">
+                          <button
+                            onClick={() => setChartMetric("mins")}
+                            className={`px-2 py-0.5 rounded font-bold transition ${chartMetric === "mins" ? "bg-white/20 text-white" : "text-white/40"}`}
+                          >
+                            Duration [Mins]
+                          </button>
+                          <button
+                            onClick={() => setChartMetric("count")}
+                            className={`px-2 py-0.5 rounded font-bold transition ${chartMetric === "count" ? "bg-white/20 text-white" : "text-white/40"}`}
+                          >
+                            Session Count
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="h-44 flex items-end justify-between gap-3 px-2 pt-2">
+                        {weeklyChart.dayData.map((data, idx) => (
+                          <div
+                            key={idx}
+                            className="flex flex-col items-center gap-1.5 flex-1 h-full justify-end"
+                          >
+                            <div
+                              className="w-full flex flex-col justify-end gap-[1px] h-full"
+                              style={{
+                                height: `${Math.max((data.totalValue / weeklyChart.maxValue) * 100, 5)}%`,
+                              }}
+                            >
+                              {Object.entries(data.tags).map(([t, val]) => {
+                                const tagIndex =
+                                  tags.indexOf(t) !== -1 ? tags.indexOf(t) : 0;
+                                const pct = (val / data.totalValue) * 100;
+                                return (
+                                  <div
+                                    key={t}
+                                    className={`w-full ${tagTailwindBg[tagIndex % tagTailwindBg.length]} rounded-[1px] transition-all hover:opacity-80 relative group`}
+                                    style={{
+                                      height: `${pct}%`,
+                                      minHeight: "4px",
+                                    }}
+                                  >
+                                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-black text-white text-[9px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                                      {t}: {val}{" "}
+                                      {chartMetric === "mins" ? "m" : ""}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <span className="text-[10px] font-bold text-white/60">
+                              {data.day}
+                            </span>
+                            <span className="text-[8px] text-white/30 -mt-1 font-mono">
+                              {data.dateStr}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
 
-                    <div className="h-40 flex items-end justify-between gap-3 px-2">
-                      {weeklyChart.dayData.map((data) => (
-                        <div
-                          key={data.day}
-                          className="flex flex-col items-center gap-2 flex-1 h-full justify-end"
-                        >
-                          <div
-                            className="w-full flex flex-col justify-end gap-[1px] h-full"
-                            style={{
-                              height: `${Math.max((data.totalSec / weeklyChart.maxSec) * 100, 5)}%`,
-                            }}
-                          >
-                            {Object.entries(data.tags).map(([t, sec]) => {
-                              const tagIndex =
-                                tags.indexOf(t) !== -1 ? tags.indexOf(t) : 0;
-                              const pct = (sec / data.totalSec) * 100;
-                              return (
-                                <div
-                                  key={t}
-                                  className={`w-full ${tagColors[tagIndex % tagColors.length]} rounded-[1px] transition-all hover:opacity-80 relative group`}
-                                  style={{
-                                    height: `${pct}%`,
-                                    minHeight: "4px",
-                                  }}
-                                >
-                                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
-                                    {t}: {Math.floor(sec / 60)}m
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                          <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">
-                            {data.day}
-                          </span>
+                    {/* Tags Ratio Pie Chart */}
+                    <div className="bg-[#111115] border border-white/10 rounded-2xl p-5 flex flex-col items-center">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-white/70 mb-4 self-start">
+                        Tags Ratio Breakdown
+                      </h3>
+
+                      {pieData.grandTotal === 0 ? (
+                        <div className="py-8 text-xs text-white/30">
+                          No session data logged yet for pie chart
                         </div>
-                      ))}
+                      ) : (
+                        <div className="flex items-center gap-8 py-2">
+                          {/* SVG Pie Chart */}
+                          <div className="w-36 h-36 relative">
+                            <svg
+                              className="w-full h-full transform -rotate-90"
+                              viewBox="0 0 32 32"
+                            >
+                              {pieData.slices.map((slice, i) => {
+                                if (parseFloat(slice.percent) === 0)
+                                  return null;
+                                const strokeDash = `${slice.percent} ${100 - parseFloat(slice.percent)}`;
+                                let offset = 0;
+                                for (let j = 0; j < i; j++) {
+                                  offset += parseFloat(
+                                    pieData.slices[j].percent,
+                                  );
+                                }
+                                return (
+                                  <circle
+                                    key={i}
+                                    cx="16"
+                                    cy="16"
+                                    r="15.91549430918954"
+                                    fill="transparent"
+                                    stroke={slice.color}
+                                    strokeWidth="32"
+                                    strokeDasharray={strokeDash}
+                                    strokeDashoffset={-offset}
+                                  />
+                                );
+                              })}
+                            </svg>
+                          </div>
+
+                          {/* Legend */}
+                          <div className="flex flex-col gap-1.5">
+                            {pieData.slices.map((slice, i) => (
+                              <div
+                                key={i}
+                                className="flex items-center gap-2 text-xs"
+                              >
+                                <span
+                                  className="w-3 h-3 rounded-full"
+                                  style={{ backgroundColor: slice.color }}
+                                ></span>
+                                <span className="text-white/80 font-medium">
+                                  {slice.tag}:
+                                </span>
+                                <span className="font-mono text-white/40">
+                                  {slice.percent}%
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : (
-                  <div className="bg-[#111] border border-white/10 rounded-2xl p-5 mb-6">
+                  /* Monthly Calendar */
+                  <div className="bg-[#111] border border-white/10 rounded-2xl p-5">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-white/50 mb-4 text-center">
                       Monthly Focus Calendar
                     </h3>
-                    <div className="grid grid-cols-7 gap-1.5">
+                    <div className="grid grid-cols-7 gap-2">
                       {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
                         <div
                           key={d}
@@ -1052,16 +1358,49 @@ export default function Home() {
                           {d}
                         </div>
                       ))}
-                      {calendar.days.map((day, idx) => (
-                        <div
-                          key={idx}
-                          className={`aspect-square rounded-md flex items-center justify-center text-[10px] font-mono
-                            ${!day ? "invisible" : calendar.activeDays.has(day) ? "bg-white/20 text-white border border-white/30" : "bg-white/5 text-white/30 border border-white/5"}
-                          `}
-                        >
-                          {day}
-                        </div>
-                      ))}
+                      {calendar.days.map((day, idx) => {
+                        if (!day)
+                          return (
+                            <div
+                              key={idx}
+                              className="invisible aspect-square"
+                            ></div>
+                          );
+
+                        // Calculate focus time for this calendar day
+                        const dayDateISO = new Date(
+                          new Date().getFullYear(),
+                          new Date().getMonth(),
+                          day,
+                        )
+                          .toISOString()
+                          .split("T")[0];
+                        const daySec = sessions
+                          .filter(
+                            (s) =>
+                              new Date(s.created_at)
+                                .toISOString()
+                                .split("T")[0] === dayDateISO,
+                          )
+                          .reduce((acc, s) => acc + s.duration_seconds, 0);
+                        const dayMins = Math.floor(daySec / 60);
+
+                        return (
+                          <div
+                            key={idx}
+                            className={`aspect-square rounded-xl flex flex-col items-center justify-center text-[10px] font-mono transition-all border
+                              ${dayMins > 0 ? "bg-white/20 text-white border-white/30" : "bg-white/5 text-white/30 border-white/5"}
+                            `}
+                          >
+                            <span className="font-bold">{day}</span>
+                            {dayMins > 0 && (
+                              <span className="text-[8px] opacity-60 font-sans mt-0.5">
+                                {dayMins}m
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
