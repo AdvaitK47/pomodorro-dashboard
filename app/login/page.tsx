@@ -84,8 +84,8 @@ export default function LoginPage() {
           <Image
             src="/logo.png"
             alt="App Logo"
-            width={250}
-            height={100}
+            width={150}
+            height={50}
             className="object-contain"
             priority
           />
