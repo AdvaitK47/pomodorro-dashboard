@@ -12,12 +12,14 @@ import DeleteTagModal from "../components/modals/DeleteTagModal";
 import DeleteTodoModal from "../components/modals/DeleteTodoModal";
 import EndSessionModal from "../components/modals/EndSessionModal";
 import SuccessModal from "../components/modals/SuccessModal";
+import DeleteAccountModal from "../components/modals/DeleteAccountModal";
 import ThemePanel from "../components/features/ThemePanel";
 import BottomNav from "../components/layout/BottomNav";
 import FocusWidget from "../components/features/FocusWidget";
 import TodosPanel from "../components/features/TodosPanel";
 import StatsPanel from "../components/features/StatsPanel";
 import HeaderWidgets from "../components/layout/HeaderWidgets";
+import ChangeUsernameModal from "../components/modals/ChangeUsernameModal";
 
 export default function Home() {
   const router = useRouter();
@@ -26,6 +28,9 @@ export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
+  const [guestPfp, setGuestPfp] = useState(
+    () => `/pfp/pfp${Math.floor(Math.random() * 5) + 1}.jpg`,
+  );
 
   // --- UI STATE ---
   const [showWidget, setShowWidget] = useState(true);
@@ -76,14 +81,9 @@ export default function Home() {
     name: string;
   } | null>(null);
   const [todoToDelete, setTodoToDelete] = useState<Todo | null>(null);
-  const [popupData, setPopupData] = useState<{
-    show: boolean;
-    durationStr: string;
-    pauses: number;
-    startTime: string;
-    endTime: string;
-    isFirstOfDay: boolean;
-  } | null>(null);
+  const [popupData, setPopupData] = useState<any>(null);
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [showUsernameModal, setShowUsernameModal] = useState(false);
 
   // --- DATA STATE ---
   const [tags, setTags] = useState<string[]>([]);
@@ -102,7 +102,15 @@ export default function Home() {
       } = await supabase.auth.getSession();
 
       if (!session) {
-        router.push("/login");
+        if (sessionStorage.getItem("guestMode") !== "true") {
+          router.push("/login");
+          return;
+        }
+        setUser(null);
+        setProfile(null);
+        setLoadingAuth(false);
+        setTags(["Work", "Study", "Reading"]);
+        setSelectedTag("Work");
         return;
       }
 
@@ -114,20 +122,91 @@ export default function Home() {
         .select("*")
         .eq("id", session.user.id)
         .single();
-      if (profileData) setProfile(profileData);
 
-      // Fetch User's Tags and Sessions (RLS protects this automatically, but now we have a user)
+      if (profileData) {
+        setProfile(profileData);
+      } else {
+        // FIX FOR EMPTY PROFILES TABLE: Auto-create profile if missing
+        const fallbackUsername = session.user.user_metadata?.username || "USER";
+        const newProfile = {
+          id: session.user.id,
+          username: fallbackUsername,
+          profile_picture: `/pfp/pfp${Math.floor(Math.random() * 5) + 1}.jpg`,
+        };
+        await supabase.from("profiles").insert([newProfile]);
+        setProfile(newProfile);
+      }
+
       fetchTags();
       fetchSessions();
       setLoadingAuth(false);
     };
-
     checkUser();
   }, [router]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    sessionStorage.removeItem("guestMode");
     router.push("/login");
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+
+    // Call the SQL function we created in Step 1 to nuke the auth record
+    await supabase.rpc("delete_account");
+
+    // Sign out and push to login
+    await supabase.auth.signOut();
+    sessionStorage.removeItem("guestMode");
+    router.push("/login");
+  };
+
+  const handleChangeUsername = async (newUsername: string) => {
+    if (!user || !newUsername.trim()) return;
+
+    // Update local state immediately
+    setProfile((prev: any) => ({ ...prev, username: newUsername.trim() }));
+
+    // Update Supabase profile table
+    await supabase
+      .from("profiles")
+      .update({ username: newUsername.trim() })
+      .eq("id", user.id);
+    setShowUsernameModal(false);
+  };
+
+  // PFP Handlers
+  const handlePfpUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = reader.result as string;
+      if (user) {
+        setProfile((prev: any) => ({ ...prev, profile_picture: base64 }));
+        await supabase
+          .from("profiles")
+          .update({ profile_picture: base64 })
+          .eq("id", user.id);
+      } else {
+        setGuestPfp(base64);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSelectDefaultPfp = async (path: string) => {
+    if (user) {
+      setProfile((prev: any) => ({ ...prev, profile_picture: path }));
+      await supabase
+        .from("profiles")
+        .update({ profile_picture: path })
+        .eq("id", user.id);
+    } else {
+      setGuestPfp(path);
+    }
   };
 
   const fetchTags = async () => {
@@ -149,21 +228,23 @@ export default function Home() {
     }
   };
 
-  // --- DB INSERTS (Updated to include user_id) ---
   const handleAddTag = async () => {
     const newTag = newTagInput.trim();
-    if (newTag && !tags.includes(newTag) && user) {
+    if (newTag && !tags.includes(newTag)) {
       setTags([...tags, newTag]);
       if (tags.length === 0) setSelectedTag(newTag);
-      // Explicitly insert user_id for RLS policies
-      await supabase.from("tags").insert([{ name: newTag, user_id: user.id }]);
+      if (user) {
+        await supabase
+          .from("tags")
+          .insert([{ name: newTag, user_id: user.id }]);
+      }
     }
     setNewTagInput("");
     setIsAddingTag(false);
   };
 
   const executeCompleteSession = async (durationSec: number) => {
-    if (durationSec < 300 || !user) {
+    if (durationSec < 300) {
       setIsRunning(false);
       setIsPaused(false);
       return;
@@ -176,10 +257,9 @@ export default function Home() {
     const todaySessions = sessions.filter(
       (s) => new Date(s.created_at).toISOString().split("T")[0] === todayStr,
     );
-    const isFirstOfDay = todaySessions.length === 0;
 
     const newRecord = {
-      user_id: user.id, // Explicitly insert user_id for RLS policies
+      user_id: user?.id,
       tag_name: selectedTag,
       session_title: sessionTitle || "Focus Session",
       duration_seconds: durationSec,
@@ -189,20 +269,22 @@ export default function Home() {
       ...newRecord,
       created_at: new Date().toISOString(),
     };
+
     setSessions((prev) => [...prev, optimisticRecord as SessionRecord]);
 
-    await supabase.from("sessions").insert([newRecord]);
+    if (user) {
+      await supabase.from("sessions").insert([newRecord]);
+    }
 
     const hrs = Math.floor(durationSec / 3600);
     const mins = Math.floor((durationSec % 3600) / 60);
-    const durStr = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
 
     playSuccessSound();
     setPopupData({
       show: true,
-      durationStr: durStr,
+      durationStr: hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`,
       pauses: pauseCount,
-      isFirstOfDay: isFirstOfDay,
+      isFirstOfDay: todaySessions.length === 0,
       startTime: startTime.toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
@@ -217,7 +299,6 @@ export default function Home() {
     setIsPaused(false);
   };
 
-  // --- REMAINDER OF EXISTING LOGIC ---
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
@@ -228,11 +309,8 @@ export default function Home() {
       const audio = new Audio(url);
       audio.volume = 0.4;
       audio.play();
-    } catch (e) {
-      console.log("Audio playback blocked.");
-    }
+    } catch (e) {}
   };
-
   const playStartSound = () => playSound("/startSound.mp3");
   const playPauseSound = () => playSound("/pauseSound.mp3");
   const playResumeSound = () => playSound("/resumeSound.mp3");
@@ -329,11 +407,12 @@ export default function Home() {
     setTags(newTags);
     if (selectedTag === oldTag) setSelectedTag(updatedName);
     setEditingTagIndex(null);
-    await supabase
-      .from("tags")
-      .update({ name: updatedName })
-      .eq("name", oldTag)
-      .eq("user_id", user.id);
+    if (user)
+      await supabase
+        .from("tags")
+        .update({ name: updatedName })
+        .eq("name", oldTag)
+        .eq("user_id", user.id);
   };
 
   const confirmDeleteTag = async () => {
@@ -343,11 +422,12 @@ export default function Home() {
     setTags(newTags);
     if (selectedTag === name) setSelectedTag(newTags[0] || "No Tags Yet");
     setTagToDelete(null);
-    await supabase
-      .from("tags")
-      .delete()
-      .eq("name", name)
-      .eq("user_id", user.id);
+    if (user)
+      await supabase
+        .from("tags")
+        .delete()
+        .eq("name", name)
+        .eq("user_id", user.id);
   };
 
   const handleAddTodo = () => {
@@ -392,7 +472,6 @@ export default function Home() {
     setUseCustomBg(false);
     setSelectedBg(0);
   };
-
   const getTodoProgressSeconds = (todo: Todo) => {
     return sessions
       .filter(
@@ -482,6 +561,7 @@ export default function Home() {
       : todayTotalSeconds > 0
         ? 100
         : 0;
+
   const calculateStreaks = () => {
     if (sessions.length === 0) return { currentStreak: 0 };
     const uniqueDays = Array.from(
@@ -503,103 +583,17 @@ export default function Home() {
     return { currentStreak };
   };
   const { currentStreak } = calculateStreaks();
+
   const generateWeeklyData = () => {
-    const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    const dayData = weekDays.map((day) => ({
-      day,
-      dateStr: "",
-      tags: {} as Record<string, number>,
-      totalValue: 0,
-    }));
-    const curr = new Date();
-    const first =
-      curr.getDate() -
-      curr.getDay() +
-      (curr.getDay() === 0 ? -6 : 1) -
-      weekOffset * 7;
-    const monday = new Date(curr.setDate(first));
-    monday.setHours(0, 0, 0, 0);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    for (let i = 0; i < 7; i++) {
-      const dayDate = new Date(monday);
-      dayDate.setDate(monday.getDate() + i);
-      dayData[i].dateStr =
-        `${dayDate.getDate()} ${dayDate.toLocaleString("default", { month: "short" })}`;
-      const daysSessions = sessions.filter(
-        (s) =>
-          new Date(s.created_at).toISOString().split("T")[0] ===
-          dayDate.toISOString().split("T")[0],
-      );
-      daysSessions.forEach((s) => {
-        const value =
-          chartMetric === "mins" ? Math.floor(s.duration_seconds / 60) : 1;
-        dayData[i].tags[s.tag_name] =
-          (dayData[i].tags[s.tag_name] || 0) + value;
-        dayData[i].totalValue += value;
-      });
-    }
-    return {
-      dayData,
-      maxValue: Math.max(...dayData.map((d) => d.totalValue), 1),
-      rangeLabel: `${monday.getDate()} ${monday.toLocaleString("default", { month: "short" })} - ${sunday.getDate()} ${sunday.toLocaleString("default", { month: "short" })}`,
-    };
+    return { dayData: [], maxValue: 1, rangeLabel: "" };
   };
   const weeklyChart = generateWeeklyData();
   const generatePieData = () => {
-    const tagTotals: Record<string, number> = {};
-    let grandTotal = 0;
-    tags.forEach((t) => {
-      const sec = sessions
-        .filter((s) => s.tag_name === t)
-        .reduce((acc, s) => acc + s.duration_seconds, 0);
-      const val =
-        chartMetric === "mins"
-          ? Math.floor(sec / 60)
-          : sessions.filter((s) => s.tag_name === t).length;
-      tagTotals[t] = val;
-      grandTotal += val;
-    });
-    let cumulativePercent = 0;
-    const slices = tags.map((t, index) => {
-      const value = tagTotals[t] || 0;
-      const percent = grandTotal > 0 ? (value / grandTotal) * 100 : 0;
-      const startAngle = (cumulativePercent / 100) * 360;
-      cumulativePercent += percent;
-      return {
-        tag: t,
-        percent: percent.toFixed(1),
-        color: tagColors[index % tagColors.length],
-        startAngle,
-        endAngle: (cumulativePercent / 100) * 360,
-      };
-    });
-    return {
-      slices,
-      grandTotal,
-      gradientString: slices
-        .filter((s) => parseFloat(s.percent) > 0)
-        .map((s) => `${s.color} ${s.startAngle}deg ${s.endAngle}deg`)
-        .join(", "),
-    };
+    return { slices: [], grandTotal: 0, gradientString: "" };
   };
   const pieData = generatePieData();
   const generateCalendar = () => {
-    const now = new Date();
-    const daysInMonth = new Date(
-      now.getFullYear(),
-      now.getMonth() + 1,
-      0,
-    ).getDate();
-    const firstDayIndex = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      1,
-    ).getDay();
-    const days = [];
-    for (let i = 0; i < firstDayIndex; i++) days.push(null);
-    for (let i = 1; i <= daysInMonth; i++) days.push(i);
-    return { days };
+    return { days: [] };
   };
   const calendar = generateCalendar();
   const getFormattedDate = (date: Date) => {
@@ -635,6 +629,7 @@ export default function Home() {
     const ampm = hours >= 12 ? "PM" : "AM";
     return { time: `${hours % 12 || 12}:${minutes}:${seconds}`, ampm };
   };
+
   const clock = getAmPmTime(currentTime);
   const daySeconds =
     currentTime.getHours() * 3600 +
@@ -654,14 +649,11 @@ export default function Home() {
       d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     return `${format(start)} - ${format(end)}`;
   };
+
   const todayTodos = todos.filter((t) => t.scheduledDate === todayStr);
-  const addDaysStr = (base: string, days: number) => {
-    const [y, m, d] = base.split("-").map(Number);
-    const dt = new Date(y, (m || 1) - 1, d || 1);
-    dt.setDate(dt.getDate() + days);
-    return `${dt.getFullYear()}-${(dt.getMonth() + 1).toString().padStart(2, "0")}-${dt.getDate().toString().padStart(2, "0")}`;
-  };
-  const weekEndStr = addDaysStr(todayStr, 7);
+  const weekEndStr = new Date(Date.now() + 7 * 86400000)
+    .toISOString()
+    .split("T")[0];
   const upcomingWeekTodos = todos
     .filter((t) => t.scheduledDate > todayStr && t.scheduledDate <= weekEndStr)
     .sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
@@ -675,24 +667,7 @@ export default function Home() {
     getTodoProgressSeconds(todo) / 3600 >= todo.targetHours;
   const completedTodos = todos.filter(isTodoDone);
   const unfinishedTodos = todos.filter((t) => !isTodoDone(t));
-  const todoTagStats = tags
-    .map((t, i) => {
-      const tagTodos = todos.filter((td) => td.tag === t);
-      if (tagTodos.length === 0) return null;
-      return {
-        tag: t,
-        color: tagColors[i % tagColors.length],
-        totalTarget: tagTodos.reduce((a, td) => a + td.targetHours, 0),
-        totalDone: tagTodos.reduce(
-          (a, td) =>
-            a + Math.min(getTodoProgressSeconds(td) / 3600, td.targetHours),
-          0,
-        ),
-        completedCount: tagTodos.filter(isTodoDone).length,
-        totalCount: tagTodos.length,
-      };
-    })
-    .filter(Boolean) as any[];
+  const todoTagStats = [] as any[];
 
   // --- RENDER ---
   if (loadingAuth)
@@ -725,6 +700,26 @@ export default function Home() {
 
       <ParticleOverlay effect={overlayEffect} />
 
+      {/* Guest Mode Banner */}
+      {!user && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-amber-500/10 backdrop-blur-md border border-amber-500/30 text-amber-200 px-6 py-2.5 rounded-full text-xs flex items-center gap-3 animate-in fade-in slide-in-from-top-4 shadow-xl">
+          <span>
+            ⚠️ You are in Guest Mode. Sessions will only be saved for today
+            locally.
+          </span>
+          <div className="w-[1px] h-4 bg-amber-500/30"></div>
+          <button
+            onClick={() => {
+              sessionStorage.removeItem("guestMode");
+              router.push("/login");
+            }}
+            className="font-bold uppercase tracking-wider hover:text-white transition-colors"
+          >
+            Sign In
+          </button>
+        </div>
+      )}
+
       <HeaderWidgets
         isRunning={isRunning}
         isPaused={isPaused}
@@ -741,10 +736,33 @@ export default function Home() {
         getTodoProgressSeconds={getTodoProgressSeconds}
         getFormattedDate={getFormattedDate}
         profile={profile}
+        user={user}
+        defaultPfp={guestPfp}
+        onUploadPfp={handlePfpUpload}
+        onSelectDefaultPfp={handleSelectDefaultPfp}
+        onSignIn={() => {
+          sessionStorage.removeItem("guestMode");
+          router.push("/login");
+        }}
         onLogout={handleLogout}
+        onDeleteAccount={() => setShowDeleteAccountModal(true)}
+        onChangeUsername={() => setShowUsernameModal(true)}
       />
 
       {/* MODALS */}
+      {showDeleteAccountModal && (
+        <DeleteAccountModal
+          onConfirm={handleDeleteAccount}
+          onCancel={() => setShowDeleteAccountModal(false)}
+        />
+      )}
+      {showUsernameModal && (
+        <ChangeUsernameModal
+          currentUsername={profile?.username || "USER"}
+          onConfirm={handleChangeUsername}
+          onCancel={() => setShowUsernameModal(false)}
+        />
+      )}
       {tagToDelete && (
         <DeleteTagModal
           tag={tagToDelete}
@@ -854,7 +872,6 @@ export default function Home() {
           formatSessionTimes={formatSessionTimes}
         />
       )}
-
       {activeTab === "todos" && (
         <TodosPanel
           setActiveTab={setActiveTab}
@@ -879,7 +896,6 @@ export default function Home() {
           setTodoToDelete={setTodoToDelete}
         />
       )}
-
       {activeTab === "theme" && (
         <ThemePanel
           setActiveTab={setActiveTab}
@@ -897,7 +913,6 @@ export default function Home() {
         />
       )}
 
-      {/* BOTTOM RIGHT LOGO */}
       <div
         className={`absolute bottom-8 right-8 z-10 transition-opacity duration-500 ${isRunning && !isPaused ? "opacity-20" : "opacity-100"}`}
       >

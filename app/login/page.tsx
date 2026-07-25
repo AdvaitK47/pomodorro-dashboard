@@ -24,7 +24,6 @@ export default function LoginPage() {
 
     try {
       if (isForgotPassword) {
-        // Handle Password Reset
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(
           email,
           {
@@ -35,22 +34,14 @@ export default function LoginPage() {
         setMessage("Check your email for the password reset link.");
         setIsForgotPassword(false);
       } else if (isSignUp) {
-        // Handle Sign Up
         const { data: authData, error: authError } = await supabase.auth.signUp(
           {
             email,
             password,
-            options: {
-              data: {
-                username: username,
-              },
-            },
+            options: { data: { username: username } },
           },
         );
-
         if (authError) throw authError;
-
-        // If Confirm Email is ON, session is null. If OFF, it auto-logs in.
         if (authData.session) {
           router.push("/");
         } else {
@@ -61,7 +52,6 @@ export default function LoginPage() {
           setPassword("");
         }
       } else {
-        // Handle Login
         const { error: loginError } = await supabase.auth.signInWithPassword({
           email,
           password,
@@ -78,7 +68,6 @@ export default function LoginPage() {
 
   return (
     <main className="relative min-h-screen w-full flex items-center justify-center overflow-hidden font-sans text-white p-4">
-      {/* Background */}
       <Image
         src="/bg.jpg"
         alt="Background"
@@ -88,10 +77,9 @@ export default function LoginPage() {
       />
       <div className="absolute inset-0 bg-black/60 z-[-1]"></div>
 
-      {/* ULTRA-COMPACT UI */}
-      <div className="bg-[#181817]/95 border border-white/5 p-4 rounded-3xl shadow-2xl w-full max-w-[400px] h-fit flex flex-col items-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-        {/* Logo */}
-        <div className="mb-6 w-full flex justify-center mt-2">
+      <div className="bg-[#181817]/95 border border-white/5 p-6 rounded-3xl shadow-2xl w-full max-w-[400px] h-fit flex flex-col items-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+        {/* Logo and Subtitle */}
+        <div className="mb-6 w-full flex flex-col items-center mt-2">
           <Image
             src="/logo.png"
             alt="App Logo"
@@ -100,9 +88,11 @@ export default function LoginPage() {
             className="object-contain"
             priority
           />
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50 mt-3">
+            Focus Time Tracker
+          </p>
         </div>
 
-        {/* 3 Main Features */}
         <div className="flex w-full justify-between mb-6 px-1 text-center">
           <div className="flex flex-col items-center gap-1 flex-1">
             <span className="text-[10px] font-bold uppercase tracking-wider text-white/90">
@@ -130,7 +120,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Auth Form */}
         <form onSubmit={handleAuth} className="w-full flex flex-col gap-3">
           {error && (
             <div className="w-full p-2 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs text-center font-medium">
@@ -204,23 +193,35 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Toggle Mode */}
-        <button
-          type="button"
-          onClick={() => {
-            setIsSignUp(!isSignUp);
-            setIsForgotPassword(false);
-            setError(null);
-            setMessage(null);
-          }}
-          className="mt-5 text-[10px] text-white/40 hover:text-white/80 transition-colors tracking-wide"
-        >
-          {isForgotPassword
-            ? "Back to Login"
-            : isSignUp
-              ? "Already have an account? Log in."
-              : "Don't have an account? Sign up."}
-        </button>
+        <div className="w-full flex flex-col items-center mt-5 gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setIsSignUp(!isSignUp);
+              setIsForgotPassword(false);
+              setError(null);
+              setMessage(null);
+            }}
+            className="text-[10px] text-white/40 hover:text-white/80 transition-colors tracking-wide"
+          >
+            {isForgotPassword
+              ? "Back to Login"
+              : isSignUp
+                ? "Already have an account? Log in."
+                : "Don't have an account? Sign up."}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              sessionStorage.setItem("guestMode", "true");
+              router.push("/");
+            }}
+            className="text-[10px] font-bold text-white/30 hover:text-white/70 uppercase tracking-widest transition-colors border-b border-transparent hover:border-white/30 pb-0.5"
+          >
+            Skip & Continue as Guest →
+          </button>
+        </div>
       </div>
     </main>
   );
