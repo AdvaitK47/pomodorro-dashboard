@@ -101,13 +101,13 @@ export default function HeaderWidgets({
         </div>
       </div>
 
-      {/* TOP MIDDLE: Streak */}
+      {/* TOP MIDDLE: Streak (Scaled Down) */}
       <div
         className={`absolute top-8 left-1/2 -translate-x-1/2 flex transition-opacity duration-500 ${isRunning && !isPaused ? "opacity-20" : "opacity-100"}`}
       >
-        <div className="flex items-center gap-2 bg-black/40 px-5 py-2 rounded-full border border-white/10 backdrop-blur-md shadow-lg">
-          <span className="text-sm text-white grayscale">🔥</span>
-          <span className="text-[10px] font-bold tracking-widest uppercase text-white/90">
+        <div className="flex items-center gap-1.5 bg-black/40 px-3.5 py-1.5 rounded-full border border-white/10 backdrop-blur-md shadow-lg">
+          <span className="text-xs text-white grayscale">🔥</span>
+          <span className="text-[8px] font-bold tracking-widest uppercase text-white/90">
             {currentStreak}d Streak
           </span>
         </div>
@@ -126,7 +126,6 @@ export default function HeaderWidgets({
               <span className="text-sm font-bold uppercase tracking-wider text-white/90 drop-shadow-md">
                 {displayUsername}
               </span>
-              {/* BIGGER, FREESTANDING PFP */}
               <img
                 src={pfpSrc}
                 alt="Profile"
@@ -149,7 +148,6 @@ export default function HeaderWidgets({
                 Change Profile Picture
               </h4>
 
-              {/* 5 Default PFPs */}
               <div className="grid grid-cols-5 gap-2 mb-4">
                 {defaultPfpOptions.map((pfp, idx) => (
                   <button
@@ -169,7 +167,6 @@ export default function HeaderWidgets({
                 ))}
               </div>
 
-              {/* Upload Custom PFP */}
               <label className="w-full flex items-center justify-center py-2.5 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer mb-4">
                 Upload Custom
                 <input
@@ -185,7 +182,6 @@ export default function HeaderWidgets({
 
               <div className="w-full h-[1px] bg-white/10 mb-3"></div>
 
-              {/* Change Username */}
               <button
                 onClick={() => {
                   setShowProfileMenu(false);

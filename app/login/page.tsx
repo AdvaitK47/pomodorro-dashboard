@@ -77,44 +77,45 @@ export default function LoginPage() {
       />
       <div className="absolute inset-0 bg-black/60 z-[-1]"></div>
 
-      <div className="bg-[#181817]/95 border border-white/5 p-6 rounded-3xl shadow-2xl w-full max-w-[400px] h-fit flex flex-col items-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-        {/* Logo and Subtitle */}
-        <div className="mb-6 w-full flex flex-col items-center mt-2">
+      {/* Scaled down container: max-w-[320px] and slightly tighter padding */}
+      <div className="bg-[#181817]/95 border border-white/5 p-6 rounded-3xl shadow-2xl w-full max-w-[320px] h-fit flex flex-col items-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+        {/* Logo scaled up by ~1.25x */}
+        <div className="mb-5 w-full flex flex-col items-center mt-1">
           <Image
             src="/logo.png"
             alt="App Logo"
-            width={200}
-            height={80}
+            width={250}
+            height={100}
             className="object-contain"
             priority
           />
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50 mt-3">
+          <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/50 mt-2">
             Focus Time Tracker
           </p>
         </div>
 
         <div className="flex w-full justify-between mb-6 px-1 text-center">
           <div className="flex flex-col items-center gap-1 flex-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-white/90">
+            <span className="text-[9px] font-bold uppercase tracking-wider text-white/90">
               Deep Focus
             </span>
-            <span className="text-[9px] text-white/40 font-medium tracking-wide">
+            <span className="text-[8px] text-white/40 font-medium tracking-wide">
               Distraction-free
             </span>
           </div>
           <div className="flex flex-col items-center gap-1 flex-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-white/90">
+            <span className="text-[9px] font-bold uppercase tracking-wider text-white/90">
               Smart Stats
             </span>
-            <span className="text-[9px] text-white/40 font-medium tracking-wide">
+            <span className="text-[8px] text-white/40 font-medium tracking-wide">
               Track progress
             </span>
           </div>
           <div className="flex flex-col items-center gap-1 flex-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-white/90">
+            <span className="text-[9px] font-bold uppercase tracking-wider text-white/90">
               Task Sync
             </span>
-            <span className="text-[9px] text-white/40 font-medium tracking-wide">
+            <span className="text-[8px] text-white/40 font-medium tracking-wide">
               Stay on schedule
             </span>
           </div>
@@ -139,7 +140,7 @@ export default function LoginPage() {
               required
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full bg-[#111111] border border-white/5 rounded-xl px-4 py-3 text-sm outline-none focus:border-white/20 transition-colors placeholder:text-white/30 text-white"
+              className="w-full bg-[#111111] border border-white/5 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-white/20 transition-colors placeholder:text-white/30 text-white"
             />
           )}
 
@@ -149,18 +150,18 @@ export default function LoginPage() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full bg-[#111111] border border-white/5 rounded-xl px-4 py-3 text-sm outline-none focus:border-white/20 transition-colors placeholder:text-white/30 text-white"
+            className="w-full bg-[#111111] border border-white/5 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-white/20 transition-colors placeholder:text-white/30 text-white"
           />
 
           {!isForgotPassword && (
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1">
               <input
                 type="password"
                 placeholder="Password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-[#111111] border border-white/5 rounded-xl px-4 py-3 text-sm outline-none focus:border-white/20 transition-colors placeholder:text-white/30 text-white"
+                className="w-full bg-[#111111] border border-white/5 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-white/20 transition-colors placeholder:text-white/30 text-white"
               />
               {!isSignUp && (
                 <button
@@ -170,7 +171,7 @@ export default function LoginPage() {
                     setError(null);
                     setMessage(null);
                   }}
-                  className="self-end text-[9px] text-white/30 hover:text-white/70 transition-colors"
+                  className="self-end text-[8px] text-white/30 hover:text-white/70 transition-colors mt-1"
                 >
                   Forgot Password?
                 </button>
@@ -181,7 +182,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full mt-2 py-3.5 bg-[#ebebeb] text-black hover:bg-white rounded-xl font-extrabold text-[11px] uppercase tracking-[0.15em] transition-all active:scale-95 disabled:opacity-50"
+            className="w-full mt-2 py-3 bg-[#ebebeb] text-black hover:bg-white rounded-xl font-extrabold text-[10px] uppercase tracking-[0.15em] transition-all active:scale-95 disabled:opacity-50"
           >
             {loading
               ? "Processing..."
@@ -202,7 +203,7 @@ export default function LoginPage() {
               setError(null);
               setMessage(null);
             }}
-            className="text-[10px] text-white/40 hover:text-white/80 transition-colors tracking-wide"
+            className="text-[9px] text-white/40 hover:text-white/80 transition-colors tracking-wide"
           >
             {isForgotPassword
               ? "Back to Login"
@@ -217,7 +218,7 @@ export default function LoginPage() {
               sessionStorage.setItem("guestMode", "true");
               router.push("/");
             }}
-            className="text-[10px] font-bold text-white/30 hover:text-white/70 uppercase tracking-widest transition-colors border-b border-transparent hover:border-white/30 pb-0.5"
+            className="text-[9px] font-bold text-white/30 hover:text-white/70 uppercase tracking-widest transition-colors border-b border-transparent hover:border-white/30 pb-0.5"
           >
             Skip & Continue as Guest →
           </button>
