@@ -34,6 +34,7 @@ export default function Home() {
 
   // --- UI STATE ---
   const [showWidget, setShowWidget] = useState(true);
+  const [showGuestBanner, setShowGuestBanner] = useState(true);
   const [activeTab, setActiveTab] = useState<
     "focus" | "stats" | "theme" | "todos"
   >("focus");
@@ -125,12 +126,20 @@ export default function Home() {
 
       if (profileData) {
         setProfile(profileData);
+        // Backfill email for profiles created before the email column existed
+        if (!profileData.email && session.user.email) {
+          await supabase
+            .from("profiles")
+            .update({ email: session.user.email })
+            .eq("id", session.user.id);
+        }
       } else {
         // FIX FOR EMPTY PROFILES TABLE: Auto-create profile if missing
         const fallbackUsername = session.user.user_metadata?.username || "USER";
         const newProfile = {
           id: session.user.id,
           username: fallbackUsername,
+          email: session.user.email,
           profile_picture: `/pfp/pfp${Math.floor(Math.random() * 5) + 1}.jpg`,
         };
         await supabase.from("profiles").insert([newProfile]);
@@ -483,6 +492,16 @@ export default function Home() {
       .reduce((acc, s) => acc + s.duration_seconds, 0);
   };
 
+  // GUEST LOCK: force default background + no overlays for non-signed-in users
+  useEffect(() => {
+    if (!loadingAuth && !user) {
+      setSelectedBg(0);
+      setUseCustomBg(false);
+      setCustomBg(null);
+      setOverlayEffect("none");
+    }
+  }, [loadingAuth, user]);
+
   // LOCAL STORAGE EFFECTS
   useEffect(() => {
     try {
@@ -698,15 +717,20 @@ export default function Home() {
         <div className="absolute inset-0 bg-black/40 transition-all duration-700"></div>
       </div>
 
-      <ParticleOverlay effect={overlayEffect} />
+      {/* Ambient overlays disabled for guests */}
+      {user && <ParticleOverlay effect={overlayEffect} />}
 
       {/* Guest Mode Banner */}
-      {!user && (
+      {!user && showGuestBanner && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-amber-500/10 backdrop-blur-md border border-amber-500/30 text-amber-200 px-6 py-2.5 rounded-full text-xs flex items-center gap-3 animate-in fade-in slide-in-from-top-4 shadow-xl">
-          <span>
-            ⚠️ You are in Guest Mode. Sessions will only be saved for today
-            locally.
-          </span>
+          <button
+            onClick={() => setShowGuestBanner(false)}
+            className="text-amber-200/70 hover:text-white transition-colors"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+          <span>⚠️ You are in Guest Mode. Sign In to save your progress.</span>
           <div className="w-[1px] h-4 bg-amber-500/30"></div>
           <button
             onClick={() => {
@@ -737,6 +761,7 @@ export default function Home() {
         getFormattedDate={getFormattedDate}
         profile={profile}
         user={user}
+        userEmail={user?.email}
         defaultPfp={guestPfp}
         onUploadPfp={handlePfpUpload}
         onSelectDefaultPfp={handleSelectDefaultPfp}
@@ -910,6 +935,7 @@ export default function Home() {
           handleRemoveCustomBg={handleRemoveCustomBg}
           overlayEffect={overlayEffect}
           setOverlayEffect={setOverlayEffect}
+          isGuest={!user}
         />
       )}
 
