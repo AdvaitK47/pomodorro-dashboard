@@ -1,6 +1,7 @@
 // components/features/StatsPanel.tsx
 import { tagColors } from "../../lib/constants";
 import { SessionRecord, Todo } from "../../lib/types";
+import { toLocalDateStr } from "../../lib/dateUtils";
 
 export default function StatsPanel({
   setActiveTab,
@@ -525,18 +526,17 @@ export default function StatsPanel({
                           className="invisible aspect-square"
                         ></div>
                       );
-                    const dayDateISO = new Date(
-                      new Date().getFullYear(),
-                      new Date().getMonth(),
-                      day,
-                    )
-                      .toISOString()
-                      .split("T")[0];
+                    const dayDateStr = toLocalDateStr(
+                      new Date(
+                        new Date().getFullYear(),
+                        new Date().getMonth(),
+                        day,
+                      ),
+                    );
                     const daySec = sessions
                       .filter(
                         (s: SessionRecord) =>
-                          new Date(s.created_at).toISOString().split("T")[0] ===
-                          dayDateISO,
+                          toLocalDateStr(new Date(s.created_at)) === dayDateStr,
                       )
                       .reduce(
                         (acc: number, s: SessionRecord) =>
@@ -645,8 +645,7 @@ export default function StatsPanel({
                             </span>
                           </div>
                           <span className="text-white/40 font-mono shrink-0 ml-2">
-                            {new Date().toISOString().split("T")[0] ===
-                            t.scheduledDate
+                            {toLocalDateStr(new Date()) === t.scheduledDate
                               ? "Today"
                               : t.scheduledDate}
                           </span>

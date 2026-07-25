@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "./supabase";
 import { SessionRecord, OverlayEffect, Todo } from "../lib/types";
 import { tagColors, backgrounds, overlayOptions } from "../lib/constants";
+import { toLocalDateStr } from "../lib/dateUtils";
 import ParticleOverlay from "../components/ui/ParticleOverlay";
 import GlassDatePicker from "../components/ui/GlassDatePicker";
 import DeleteTagModal from "../components/modals/DeleteTagModal";
@@ -45,7 +46,7 @@ export default function Home() {
   const [overlayEffect, setOverlayEffect] = useState<OverlayEffect>("none");
 
   // --- TODOS STATE ---
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = toLocalDateStr(new Date());
   const [todos, setTodos] = useState<Todo[]>([]);
   const [todoName, setTodoName] = useState("");
   const [todoTag, setTodoTag] = useState("");
@@ -226,7 +227,7 @@ export default function Home() {
       setSelectedTag(fetched[0]);
     } else {
       setTags([]);
-      setSelectedTag("No Tags Yet");
+      setSelectedTag("Untagged");
     }
   };
 
@@ -264,7 +265,7 @@ export default function Home() {
       sessionStartTimeRef.current ||
       new Date(endTime.getTime() - durationSec * 1000);
     const todaySessions = sessions.filter(
-      (s) => new Date(s.created_at).toISOString().split("T")[0] === todayStr,
+      (s) => toLocalDateStr(new Date(s.created_at)) === todayStr,
     );
 
     const newRecord = {
@@ -429,7 +430,7 @@ export default function Home() {
     const { index, name } = tagToDelete;
     const newTags = tags.filter((_, i) => i !== index);
     setTags(newTags);
-    if (selectedTag === name) setSelectedTag(newTags[0] || "No Tags Yet");
+    if (selectedTag === name) setSelectedTag(newTags[0] || "Untagged");
     setTagToDelete(null);
     if (user)
       await supabase
@@ -486,8 +487,7 @@ export default function Home() {
       .filter(
         (s) =>
           s.tag_name === todo.tag &&
-          new Date(s.created_at).toISOString().split("T")[0] ===
-            todo.scheduledDate,
+          toLocalDateStr(new Date(s.created_at)) === todo.scheduledDate,
       )
       .reduce((acc, s) => acc + s.duration_seconds, 0);
   };
@@ -529,14 +529,12 @@ export default function Home() {
   }, [tags, todoTag]);
 
   // CALCS
-  const yesterdayStr = new Date(Date.now() - 86400000)
-    .toISOString()
-    .split("T")[0];
+  const yesterdayStr = toLocalDateStr(new Date(Date.now() - 86400000));
   const todaySessions = sessions.filter(
-    (s) => new Date(s.created_at).toISOString().split("T")[0] === todayStr,
+    (s) => toLocalDateStr(new Date(s.created_at)) === todayStr,
   );
   const yesterdaySessions = sessions.filter(
-    (s) => new Date(s.created_at).toISOString().split("T")[0] === yesterdayStr,
+    (s) => toLocalDateStr(new Date(s.created_at)) === yesterdayStr,
   );
   const todayTotalSeconds = todaySessions.reduce(
     (acc, s) => acc + s.duration_seconds,
@@ -584,14 +582,12 @@ export default function Home() {
   const calculateStreaks = () => {
     if (sessions.length === 0) return { currentStreak: 0 };
     const uniqueDays = Array.from(
-      new Set(
-        sessions.map((s) => new Date(s.created_at).toISOString().split("T")[0]),
-      ),
+      new Set(sessions.map((s) => toLocalDateStr(new Date(s.created_at)))),
     ).sort();
     let currentStreak = 0,
       checkDate = new Date();
     while (true) {
-      const dateStr = checkDate.toISOString().split("T")[0];
+      const dateStr = toLocalDateStr(checkDate);
       if (uniqueDays.includes(dateStr)) {
         currentStreak++;
         checkDate.setDate(checkDate.getDate() - 1);
@@ -603,18 +599,124 @@ export default function Home() {
   };
   const { currentStreak } = calculateStreaks();
 
+  // Helper: get the [start, end] dates (Sun-Sat) for a given week offset from this week
+  const getWeekRange = (offset: number) => {
+    const now = new Date();
+    const currentDay = now.getDay();
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(now.getDate() - currentDay - offset * 7);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    return { start, end };
+  };
+
   const generateWeeklyData = () => {
-    return { dayData: [], maxValue: 1, rangeLabel: "" };
+    const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const { start, end } = getWeekRange(weekOffset);
+
+    const dayData = [];
+    let maxValue = 1;
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const dStr = toLocalDateStr(d);
+
+      const daySessions = sessions.filter(
+        (s) => toLocalDateStr(new Date(s.created_at)) === dStr,
+      );
+
+      const tagTotals: Record<string, number> = {};
+      daySessions.forEach((s) => {
+        const val =
+          chartMetric === "mins" ? Math.round(s.duration_seconds / 60) : 1;
+        tagTotals[s.tag_name] = (tagTotals[s.tag_name] || 0) + val;
+      });
+
+      const totalValue = Object.values(tagTotals).reduce(
+        (acc, v) => acc + v,
+        0,
+      );
+      if (totalValue > maxValue) maxValue = totalValue;
+
+      dayData.push({
+        day: dayLabels[d.getDay()],
+        dateStr: `${d.getMonth() + 1}/${d.getDate()}`,
+        totalValue,
+        tags: tagTotals,
+      });
+    }
+
+    const fmt = (d: Date) =>
+      d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const rangeLabel = `${fmt(start)} - ${fmt(end)}`;
+
+    return { dayData, maxValue, rangeLabel };
   };
   const weeklyChart = generateWeeklyData();
+
   const generatePieData = () => {
-    return { slices: [], grandTotal: 0, gradientString: "" };
+    const { start, end } = getWeekRange(weekOffset);
+    const startStr = toLocalDateStr(start);
+    const endStr = toLocalDateStr(end);
+
+    const weekSessions = sessions.filter((s) => {
+      const dStr = toLocalDateStr(new Date(s.created_at));
+      return dStr >= startStr && dStr <= endStr;
+    });
+
+    const tagTotals: Record<string, number> = {};
+    weekSessions.forEach((s) => {
+      const val =
+        chartMetric === "mins" ? Math.round(s.duration_seconds / 60) : 1;
+      tagTotals[s.tag_name] = (tagTotals[s.tag_name] || 0) + val;
+    });
+
+    const grandTotal = Object.values(tagTotals).reduce((acc, v) => acc + v, 0);
+
+    if (grandTotal === 0) {
+      return { slices: [], grandTotal: 0, gradientString: "" };
+    }
+
+    let cumulative = 0;
+    const gradientParts: string[] = [];
+
+    const slices = tags.map((tag: string, i: number) => {
+      const val = tagTotals[tag] || 0;
+      const percent = ((val / grandTotal) * 100).toFixed(1);
+      const color = tagColors[i % tagColors.length];
+      const startPct = cumulative;
+      cumulative += parseFloat(percent);
+      if (val > 0) {
+        gradientParts.push(`${color} ${startPct}% ${cumulative}%`);
+      }
+      return { tag, color, percent };
+    });
+
+    return {
+      slices,
+      grandTotal,
+      gradientString: gradientParts.join(", "),
+    };
   };
   const pieData = generatePieData();
+
   const generateCalendar = () => {
-    return { days: [] };
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const firstDayOfWeek = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const days: (number | null)[] = [];
+    for (let i = 0; i < firstDayOfWeek; i++) days.push(null);
+    for (let d = 1; d <= daysInMonth; d++) days.push(d);
+
+    return { days };
   };
   const calendar = generateCalendar();
+
   const getFormattedDate = (date: Date) => {
     const days = [
       "Sunday",
@@ -670,9 +772,7 @@ export default function Home() {
   };
 
   const todayTodos = todos.filter((t) => t.scheduledDate === todayStr);
-  const weekEndStr = new Date(Date.now() + 7 * 86400000)
-    .toISOString()
-    .split("T")[0];
+  const weekEndStr = toLocalDateStr(new Date(Date.now() + 7 * 86400000));
   const upcomingWeekTodos = todos
     .filter((t) => t.scheduledDate > todayStr && t.scheduledDate <= weekEndStr)
     .sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
@@ -686,7 +786,26 @@ export default function Home() {
     getTodoProgressSeconds(todo) / 3600 >= todo.targetHours;
   const completedTodos = todos.filter(isTodoDone);
   const unfinishedTodos = todos.filter((t) => !isTodoDone(t));
-  const todoTagStats = [] as any[];
+
+  const todoTagStats = tags
+    .map((tag: string, i: number) => {
+      const tagTodos = todos.filter((t) => t.tag === tag);
+      const totalTarget = tagTodos.reduce((acc, t) => acc + t.targetHours, 0);
+      const totalDone = tagTodos.reduce(
+        (acc, t) => acc + getTodoProgressSeconds(t) / 3600,
+        0,
+      );
+      const completedCount = tagTodos.filter((t) => isTodoDone(t)).length;
+      return {
+        tag,
+        color: tagColors[i % tagColors.length],
+        totalTarget,
+        totalDone,
+        completedCount,
+        totalCount: tagTodos.length,
+      };
+    })
+    .filter((stat: any) => stat.totalCount > 0);
 
   // --- RENDER ---
   if (loadingAuth)
