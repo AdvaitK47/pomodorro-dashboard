@@ -78,7 +78,7 @@ export default function LoginPage() {
       <div className="absolute inset-0 bg-black/60 z-[-1]"></div>
 
       {/* Scaled down container: max-w-[320px] and slightly tighter padding */}
-      <div className="bg-[#181817]/95 border border-white/5 p-6 rounded-3xl shadow-2xl w-full max-w-[320px] h-fit flex flex-col items-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="bg-[#181817]/95 border border-white/5 p-4 rounded-3xl shadow-2xl w-full max-w-[320px] h-fit flex flex-col items-center animate-in fade-in slide-in-from-bottom-4 duration-700">
         {/* Logo scaled up by ~1.25x */}
         <div className="mb-5 w-full flex flex-col items-center mt-1">
           <Image
