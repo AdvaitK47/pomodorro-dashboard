@@ -18,3 +18,8 @@ export interface Todo {
   scheduledDate: string; // YYYY-MM-DD
   createdAt: string;
 }
+
+export type SessionRecord = {
+  // ...existing fields
+  todo_id?: string | null;
+};

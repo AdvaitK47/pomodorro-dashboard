@@ -26,3 +26,24 @@ body {
     Arial,
     sans-serif;
 }
+
+/* Custom scrollbars — thin, dark, pink-accented */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(236, 72, 153, 0.35) rgba(255, 255, 255, 0.04);
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(236, 72, 153, 0.35);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(236, 72, 153, 0.55);
+}

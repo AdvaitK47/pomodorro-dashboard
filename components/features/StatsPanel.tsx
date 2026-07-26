@@ -402,50 +402,75 @@ export default function StatsPanel({
                       →
                     </button>
                   </div>
-                  <div className="h-44 flex items-end justify-between sm:justify-between gap-2 sm:gap-3 px-2 pt-2 overflow-x-auto">
-                    {weeklyChart.dayData.map((data: any, idx: number) => (
-                      <div
-                        key={idx}
-                        className="flex flex-col items-center gap-1.5 flex-1 min-w-[28px] h-full justify-end"
-                      >
+
+                  {/* Chart Container */}
+                  <div className="h-48 flex items-end justify-between gap-2 sm:gap-3 px-2 pt-8 overflow-x-auto border-b border-white/10 pb-2">
+                    {weeklyChart.dayData.map((data: any, idx: number) => {
+                      const heightPct =
+                        weeklyChart.maxValue > 0
+                          ? Math.min(
+                              70,
+                              Math.max(
+                                8,
+                                (data.totalValue / weeklyChart.maxValue) * 70,
+                              ),
+                            )
+                          : 0;
+
+                      return (
                         <div
-                          className="w-full flex flex-col justify-end gap-[1px] h-full"
-                          style={{
-                            height: `${Math.max((data.totalValue / weeklyChart.maxValue) * 100, 5)}%`,
-                          }}
+                          key={idx}
+                          className="flex flex-col items-center gap-1.5 flex-1 min-w-[28px] h-full justify-end relative"
                         >
-                          {Object.entries(data.tags).map(([t, val]: any) => {
-                            const tagIndex =
-                              tags.indexOf(t) !== -1 ? tags.indexOf(t) : 0;
-                            const pct = (val / data.totalValue) * 100;
-                            return (
-                              <div
-                                key={t}
-                                className="w-full rounded-[1px] transition-all hover:opacity-80 relative group"
-                                style={{
-                                  height: `${pct}%`,
-                                  minHeight: "4px",
-                                  backgroundColor:
-                                    tagColors[tagIndex % tagColors.length],
-                                }}
-                              >
-                                <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-black text-white text-[9px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
-                                  {t}: {val} {chartMetric === "mins" ? "m" : ""}
+                          <div
+                            className="w-full max-w-[32px] flex flex-col justify-end gap-[1px] rounded-t-lg overflow-hidden shadow-lg relative"
+                            style={{
+                              height: `${heightPct}%`,
+                              minHeight: data.totalValue > 0 ? "16px" : "4px",
+                            }}
+                          >
+                            {Object.entries(data.tags).map(([t, val]: any) => {
+                              const tagIndex = tags.indexOf(t);
+                              const tagColor =
+                                t === "Untagged"
+                                  ? "#9ca3af"
+                                  : tagIndex !== -1
+                                    ? tagColors[tagIndex % tagColors.length]
+                                    : "#9ca3af";
+
+                              const pct = (val / data.totalValue) * 100;
+                              return (
+                                <div
+                                  key={t}
+                                  className="w-full transition-all relative flex items-center justify-center overflow-hidden"
+                                  style={{
+                                    height: `${pct}%`,
+                                    minHeight: "14px",
+                                    backgroundColor: tagColor,
+                                  }}
+                                >
+                                  {val > 0 && (
+                                    <span className="text-[8px] font-mono text-black font-bold whitespace-nowrap px-0.5">
+                                      {val}
+                                      {chartMetric === "mins" ? "m" : ""}
+                                    </span>
+                                  )}
                                 </div>
-                              </div>
-                            );
-                          })}
+                              );
+                            })}
+                          </div>
+                          <span className="text-[10px] font-bold text-white/60 mt-2">
+                            {data.day}
+                          </span>
+                          <span className="text-[8px] text-white/30 -mt-1 font-mono">
+                            {data.dateStr}
+                          </span>
                         </div>
-                        <span className="text-[10px] font-bold text-white/60">
-                          {data.day}
-                        </span>
-                        <span className="text-[8px] text-white/30 -mt-1 font-mono">
-                          {data.dateStr}
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
+
                 <div className="bg-[#111115] border border-white/10 rounded-2xl p-5 flex flex-col items-center">
                   <div className="flex justify-between items-center w-full mb-4">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-white/70">

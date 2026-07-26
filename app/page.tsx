@@ -85,6 +85,25 @@ export default function Home() {
   } | null>(null);
   const wasEffectivelyRunningRef = useRef(false);
 
+  // Stable per-session identity. Generated once when a session starts
+  // (handleStart) and used as the dedupe key on insert. This is what
+  // makes session completion idempotent: no matter how many times or
+  // from how many tabs/devices executeCompleteSession ends up firing
+  // for the *same* session, only one row can ever land in Supabase for
+  // it, because client_session_id is unique in the DB and we upsert
+  // with ignoreDuplicates on conflict.
+  const sessionIdRef = useRef<string | null>(null);
+  // Extra in-memory guard so a single mount never even attempts a
+  // second insert for a session it already finalized.
+  const finalizedRef = useRef(false);
+
+  // Which todo (if any) the *next* session should count toward. The
+  // user picks this before hitting start; we snapshot it into a ref
+  // at handleStart so a mid-session tag change can't retroactively
+  // change what a running session counts toward.
+  const [sessionTodoId, setSessionTodoId] = useState<string | null>(null);
+  const sessionTodoIdRef = useRef<string | null>(null);
+
   // --- MODALS STATE ---
   const [confirmEnd, setConfirmEnd] = useState<{
     show: boolean;
@@ -267,6 +286,13 @@ export default function Home() {
 
   const executeCompleteSession = async (durationSec: number) => {
     timerAnchorRef.current = null;
+
+    // Hard guard: if this exact session was already finalized (e.g. a
+    // duplicate tab/effect fire tried to complete it again), bail out
+    // immediately without touching state or the DB.
+    if (finalizedRef.current) return;
+    finalizedRef.current = true;
+
     if (durationSec < 300) {
       setIsRunning(false);
       setIsPaused(false);
@@ -282,10 +308,12 @@ export default function Home() {
     );
 
     const newRecord = {
+      client_session_id: sessionIdRef.current,
       user_id: user?.id,
       tag_name: selectedTag,
       session_title: sessionTitle || "Focus Session",
       duration_seconds: durationSec,
+      todo_id: sessionTodoIdRef.current, // null if the user picked "None"
     };
 
     const optimisticRecord = {
@@ -296,7 +324,14 @@ export default function Home() {
     setSessions((prev) => [...prev, optimisticRecord as SessionRecord]);
 
     if (user) {
-      await supabase.from("sessions").insert([newRecord]);
+      // upsert + ignoreDuplicates: if two tabs/devices both try to
+      // complete the same logical session (same client_session_id),
+      // only one row is ever kept. The unique constraint on
+      // client_session_id in Supabase is what actually enforces this.
+      await supabase.from("sessions").upsert([newRecord], {
+        onConflict: "client_session_id",
+        ignoreDuplicates: true,
+      });
     }
 
     const hrs = Math.floor(durationSec / 3600);
@@ -397,6 +432,13 @@ export default function Home() {
 
   const handleStart = () => {
     playStartSound();
+    // New identity for this session — used as the dedupe key when it
+    // eventually completes. Reset the finalize guard too, since this
+    // is a brand new session.
+    sessionIdRef.current = crypto.randomUUID();
+    finalizedRef.current = false;
+    sessionTodoIdRef.current = sessionTodoId;
+
     let startSeconds: number;
     if (mode === "pomodoro") {
       const hrs = parseInt(inputHrs) || 0;
@@ -547,12 +589,13 @@ export default function Home() {
     setSelectedBg(0);
   };
   const getTodoProgressSeconds = (todo: Todo) => {
+    // Only sessions explicitly linked to THIS todo count toward it.
+    // This is what stops (a) pre-existing sessions from that day
+    // being retroactively counted the moment a matching-tag todo is
+    // created, and (b) one session being double-counted across two
+    // todos that happen to share a tag.
     return sessions
-      .filter(
-        (s) =>
-          s.tag_name === todo.tag &&
-          toLocalDateStr(new Date(s.created_at)) === todo.scheduledDate,
-      )
+      .filter((s) => s.todo_id === todo.id)
       .reduce((acc, s) => acc + s.duration_seconds, 0);
   };
 
@@ -591,6 +634,12 @@ export default function Home() {
   useEffect(() => {
     if (!todoTag && tags.length > 0) setTodoTag(tags[0]);
   }, [tags, todoTag]);
+
+  // Whenever the tag picked for the *next* session changes, clear any
+  // previously chosen todo — it likely doesn't belong to the new tag.
+  useEffect(() => {
+    setSessionTodoId(null);
+  }, [selectedTag]);
 
   // CALCS
   const yesterdayStr = toLocalDateStr(new Date(Date.now() - 86400000));
@@ -734,7 +783,8 @@ export default function Home() {
     weekSessions.forEach((s) => {
       const val =
         chartMetric === "mins" ? Math.round(s.duration_seconds / 60) : 1;
-      tagTotals[s.tag_name] = (tagTotals[s.tag_name] || 0) + val;
+      const tagName = s.tag_name || "Untagged";
+      tagTotals[tagName] = (tagTotals[tagName] || 0) + val;
     });
 
     const grandTotal = Object.values(tagTotals).reduce((acc, v) => acc + v, 0);
@@ -743,13 +793,22 @@ export default function Home() {
       return { slices: [], grandTotal: 0, gradientString: "" };
     }
 
+    // Gather all unique tags present in this week's sessions
+    const activeTags = Object.keys(tagTotals);
+
     let cumulative = 0;
     const gradientParts: string[] = [];
 
-    const slices = tags.map((tag: string, i: number) => {
+    const slices = activeTags.map((tag: string, i: number) => {
       const val = tagTotals[tag] || 0;
       const percent = ((val / grandTotal) * 100).toFixed(1);
-      const color = tagColors[i % tagColors.length];
+
+      // Assign pastel grey for Untagged, or cycle through tagColors for others
+      const color =
+        tag === "Untagged"
+          ? "#9ca3af"
+          : tagColors[tags.indexOf(tag) % tagColors.length] || "#9ca3af";
+
       const startPct = cumulative;
       cumulative += parseFloat(percent);
       if (val > 0) {
@@ -850,6 +909,13 @@ export default function Home() {
     getTodoProgressSeconds(todo) / 3600 >= todo.targetHours;
   const completedTodos = todos.filter(isTodoDone);
   const unfinishedTodos = todos.filter((t) => !isTodoDone(t));
+
+  // Options to offer in the "count this session toward..." picker:
+  // today's todos matching the tag currently selected for the next
+  // session, excluding ones already done.
+  const eligibleTodosForSession = todayTodos.filter(
+    (t) => t.tag === selectedTag && !isTodoDone(t),
+  );
 
   const todoTagStats = tags
     .map((tag: string, i: number) => {
@@ -1041,6 +1107,9 @@ export default function Home() {
         setNewTagInput={setNewTagInput}
         handleAddTag={handleAddTag}
         handleStart={handleStart}
+        eligibleTodosForSession={eligibleTodosForSession}
+        sessionTodoId={sessionTodoId}
+        setSessionTodoId={setSessionTodoId}
       />
 
       {activeTab === "stats" && (

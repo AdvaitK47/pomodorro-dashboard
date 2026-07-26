@@ -43,7 +43,7 @@ export default function FocusWidget({
         <div className="z-10 flex flex-col items-center scale-75 sm:scale-90 transition-all duration-500 px-4">
           <div className="mb-6 sm:mb-8">
             <div className="px-4 py-2 sm:px-6 sm:py-2.5 bg-white/10 border border-white/20 rounded-full font-bold text-[10px] uppercase tracking-widest backdrop-blur-md text-white/90 shadow-lg max-w-[80vw] truncate">
-              {selectedTag} - {sessionTitle || "Focus Session"}
+              {selectedTag || "Untagged"} - {sessionTitle || "Focus Session"}
             </div>
           </div>
           <div className="flex items-center gap-6">
@@ -187,7 +187,7 @@ export default function FocusWidget({
               {tags.map((t: string, i: number) => (
                 <div
                   key={i}
-                  onClick={() => setSelectedTag(t)}
+                  onClick={() => setSelectedTag(selectedTag === t ? "" : t)}
                   className={`flex items-center gap-1 px-2 py-1 rounded border text-xs cursor-pointer transition-colors ${selectedTag === t ? "bg-white/20 border-white/40 text-white" : "bg-black/40 border-white/10 text-white/60 hover:border-white/20"}`}
                 >
                   <span
