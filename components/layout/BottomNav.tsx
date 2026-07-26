@@ -15,13 +15,13 @@ export default function BottomNav({
   if (isRunning) return null;
 
   return (
-    <div className="absolute bottom-5 z-10 flex gap-6 px-5 py-2 bg-[#111111]/80 backdrop-blur-2xl border border-white/10 rounded-xl shadow-2xl">
+    <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 flex gap-4 sm:gap-6 px-4 sm:px-5 py-2 bg-[#111111]/80 backdrop-blur-2xl border border-white/10 rounded-xl shadow-2xl max-w-[94vw] overflow-x-auto">
       <button
         onClick={() => {
           setActiveTab("focus");
           setShowWidget(true);
         }}
-        className={`flex flex-col items-center transition group ${activeTab === "focus" && showWidget ? "text-white opacity-100" : "text-white/40 hover:text-white/80"}`}
+        className={`flex flex-col items-center shrink-0 transition group ${activeTab === "focus" && showWidget ? "text-white opacity-100" : "text-white/40 hover:text-white/80"}`}
       >
         <svg
           className="w-4 h-4 mb-0.5 group-hover:-translate-y-0.5 transition-transform grayscale"
@@ -45,7 +45,7 @@ export default function BottomNav({
           setActiveTab("stats");
           setShowWidget(false);
         }}
-        className={`flex flex-col items-center transition group ${activeTab === "stats" ? "text-white opacity-100" : "text-white/40 hover:text-white/80"}`}
+        className={`flex flex-col items-center shrink-0 transition group ${activeTab === "stats" ? "text-white opacity-100" : "text-white/40 hover:text-white/80"}`}
       >
         <svg
           className="w-4 h-4 mb-0.5 group-hover:-translate-y-0.5 transition-transform grayscale"
@@ -69,7 +69,7 @@ export default function BottomNav({
           setActiveTab("theme");
           setShowWidget(false);
         }}
-        className={`flex flex-col items-center transition group ${activeTab === "theme" ? "text-white opacity-100" : "text-white/40 hover:text-white/80"}`}
+        className={`flex flex-col items-center shrink-0 transition group ${activeTab === "theme" ? "text-white opacity-100" : "text-white/40 hover:text-white/80"}`}
       >
         <svg
           className="w-4 h-4 mb-0.5 group-hover:-translate-y-0.5 transition-transform grayscale"
@@ -93,7 +93,7 @@ export default function BottomNav({
           setActiveTab("todos");
           setShowWidget(false);
         }}
-        className={`flex flex-col items-center transition group ${activeTab === "todos" ? "text-white opacity-100" : "text-white/40 hover:text-white/80"}`}
+        className={`flex flex-col items-center shrink-0 transition group ${activeTab === "todos" ? "text-white opacity-100" : "text-white/40 hover:text-white/80"}`}
       >
         <svg
           className="w-4 h-4 mb-0.5 group-hover:-translate-y-0.5 transition-transform grayscale"

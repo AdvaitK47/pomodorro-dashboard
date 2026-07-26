@@ -6,6 +6,7 @@ import { Todo } from "../../lib/types";
 export default function HeaderWidgets({
   isRunning,
   isPaused,
+  hasGuestBanner,
   clock,
   currentTime,
   dayProgressPct,
@@ -55,30 +56,37 @@ export default function HeaderWidgets({
   ];
 
   return (
-    <>
+    // On mobile this is a real fixed flex column, so the three zones
+    // below stack top-to-bottom and can never overlap. At sm+ it
+    // becomes `display: contents` — i.e. invisible to layout — so
+    // each child's own `sm:absolute` classes place it in the exact
+    // original 3-corner desktop position, untouched.
+    <div
+      className={`fixed top-0 inset-x-0 z-10 flex flex-col gap-3 px-4 pb-4 ${hasGuestBanner ? "pt-16" : "pt-4"} sm:contents sm:p-0`}
+    >
       {/* TOP LEFT: Clock */}
       <div
-        className={`absolute top-8 left-8 flex flex-col items-start transition-opacity duration-500 group ${isRunning && !isPaused ? "opacity-20" : "opacity-100"}`}
+        className={`relative self-start sm:absolute sm:top-8 sm:left-8 flex flex-col items-start transition-opacity duration-500 group ${isRunning && !isPaused ? "opacity-20" : "opacity-100"}`}
       >
         <div className="flex items-baseline tracking-tight drop-shadow-md">
-          <span className="text-4xl font-semibold font-sans text-[#f1e9e9]">
+          <span className="text-3xl sm:text-4xl font-semibold font-sans text-[#f1e9e9]">
             {clock.time}
           </span>
-          <span className="text-sm font-bold ml-1 text-white/80 uppercase">
+          <span className="text-xs sm:text-sm font-bold ml-1 text-white/80 uppercase">
             {clock.ampm}
           </span>
         </div>
-        <div className="text-sm tracking-wide text-white/90 mt-1 mb-2 font-medium drop-shadow-md">
+        <div className="text-xs sm:text-sm tracking-wide text-white/90 mt-0.5 mb-1 sm:mt-1 sm:mb-2 font-medium drop-shadow-md">
           {getFormattedDate(currentTime)}
         </div>
-        <div className="w-48 h-1.5 bg-white/20 rounded-full overflow-hidden border border-white/10 shadow-sm">
+        <div className="w-32 sm:w-48 h-1.5 bg-white/20 rounded-full overflow-hidden border border-white/10 shadow-sm">
           <div
             className="h-full bg-white transition-all duration-1000 ease-linear"
             style={{ width: `${dayProgressPct}%` }}
           ></div>
         </div>
 
-        <div className="absolute top-20 left-0 w-48 p-3.5 bg-[#111111]/90 backdrop-blur-xl border border-white/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none shadow-2xl z-50">
+        <div className="absolute top-16 sm:top-20 left-0 w-48 p-3.5 bg-[#111111]/90 backdrop-blur-xl border border-white/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none shadow-2xl z-50">
           <div className="text-sm font-bold text-[#f1e9e9]">
             {Math.floor(dayProgressPct)}% complete
           </div>
@@ -90,12 +98,12 @@ export default function HeaderWidgets({
           </div>
         </div>
 
-        <div className="flex flex-col items-start mt-4 drop-shadow-md">
-          <span className="text-xl font-bold text-[#f1e9e9] font-mono tracking-tight leading-none">
+        <div className="flex flex-col items-start mt-2 sm:mt-4 drop-shadow-md">
+          <span className="text-base sm:text-xl font-bold text-[#f1e9e9] font-mono tracking-tight leading-none">
             {todayHours > 0 ? `${todayHours}h ` : ""}
             {todayMins} min
           </span>
-          <span className="text-[9px] font-bold uppercase tracking-wider text-white/50 mt-0.5">
+          <span className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-white/50 mt-0.5">
             Today's Focus
           </span>
         </div>
@@ -103,9 +111,9 @@ export default function HeaderWidgets({
 
       {/* TOP MIDDLE: Streak (Scaled Down) */}
       <div
-        className={`absolute top-8 left-1/2 -translate-x-1/2 flex transition-opacity duration-500 ${isRunning && !isPaused ? "opacity-20" : "opacity-100"}`}
+        className={`relative self-center sm:absolute sm:top-8 sm:left-1/2 sm:-translate-x-1/2 flex transition-opacity duration-500 ${isRunning && !isPaused ? "opacity-20" : "opacity-100"}`}
       >
-        <div className="flex items-center gap-1.5 bg-black/40 px-3.5 py-1.5 rounded-full border border-white/10 backdrop-blur-md shadow-lg">
+        <div className="flex items-center gap-1.5 bg-black/40 px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-full border border-white/10 backdrop-blur-md shadow-lg">
           <span className="text-xs text-white grayscale">🔥</span>
           <span className="text-[8px] font-bold tracking-widest uppercase text-white/90">
             {currentStreak}d Streak
@@ -115,27 +123,27 @@ export default function HeaderWidgets({
 
       {/* TOP RIGHT: Profile and Todos */}
       <div
-        className={`absolute top-8 right-8 flex flex-col items-end gap-3 transition-opacity duration-500 ${isRunning && !isPaused ? "opacity-20" : "opacity-100"}`}
+        className={`relative self-end sm:absolute sm:top-8 sm:right-8 flex flex-col items-end gap-3 transition-opacity duration-500 ${isRunning && !isPaused ? "opacity-20" : "opacity-100"}`}
       >
         <div className="relative" ref={menuRef}>
           {user ? (
             <button
               onClick={() => setShowProfileMenu(!showProfileMenu)}
-              className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+              className="flex items-center gap-2 sm:gap-3 hover:opacity-80 transition-opacity"
             >
-              <span className="text-sm font-bold uppercase tracking-wider text-white/90 drop-shadow-md">
+              <span className="text-xs sm:text-sm font-bold uppercase tracking-wider text-white/90 drop-shadow-md">
                 {displayUsername}
               </span>
               <img
                 src={pfpSrc}
                 alt="Profile"
-                className="w-12 h-12 rounded-full object-cover border-2 border-white/20 shadow-lg"
+                className="w-9 h-9 sm:w-12 sm:h-12 rounded-full object-cover border-2 border-white/20 shadow-lg"
               />
             </button>
           ) : (
             <button
               onClick={onSignIn}
-              className="bg-white text-black px-6 py-2.5 rounded-full text-xs font-extrabold uppercase tracking-widest hover:bg-white/80 transition-colors shadow-lg shadow-white/10"
+              className="bg-white text-black px-4 py-2 sm:px-6 sm:py-2.5 rounded-full text-xs font-extrabold uppercase tracking-widest hover:bg-white/80 transition-colors shadow-lg shadow-white/10"
             >
               Sign In
             </button>
@@ -143,7 +151,7 @@ export default function HeaderWidgets({
 
           {/* Profile Dropdown Menu */}
           {showProfileMenu && (
-            <div className="absolute right-0 top-full mt-3 w-56 bg-[#111111]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="absolute right-0 top-full mt-3 w-56 max-w-[85vw] bg-[#111111]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
               <h4 className="text-[9px] font-bold uppercase tracking-widest text-white/40 mb-3">
                 Change Profile Picture
               </h4>
@@ -213,7 +221,7 @@ export default function HeaderWidgets({
         </div>
 
         {/* Todos Box */}
-        <div className="w-64 bg-black/40 backdrop-blur-md border border-white/10 rounded-xl p-3 shadow-xl mt-1">
+        <div className="w-56 max-w-[70vw] sm:w-64 sm:max-w-none bg-black/40 backdrop-blur-md border border-white/10 rounded-xl p-3 shadow-xl mt-1">
           <h3 className="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-2 flex justify-between">
             <span>Today's Todos</span>
             <span>{todayTodos.length}</span>
@@ -271,6 +279,6 @@ export default function HeaderWidgets({
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

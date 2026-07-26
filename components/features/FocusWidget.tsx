@@ -40,9 +40,9 @@ export default function FocusWidget({
   return (
     <>
       {isRunning ? (
-        <div className="z-10 flex flex-col items-center scale-90 transition-all duration-500">
-          <div className="mb-8">
-            <div className="px-6 py-2.5 bg-white/10 border border-white/20 rounded-full font-bold text-[10px] uppercase tracking-widest backdrop-blur-md text-white/90 shadow-lg">
+        <div className="z-10 flex flex-col items-center scale-75 sm:scale-90 transition-all duration-500 px-4">
+          <div className="mb-6 sm:mb-8">
+            <div className="px-4 py-2 sm:px-6 sm:py-2.5 bg-white/10 border border-white/20 rounded-full font-bold text-[10px] uppercase tracking-widest backdrop-blur-md text-white/90 shadow-lg max-w-[80vw] truncate">
               {selectedTag} - {sessionTitle || "Focus Session"}
             </div>
           </div>
@@ -54,11 +54,11 @@ export default function FocusWidget({
               −
             </button>
             <div className="flex flex-col items-center">
-              <div className="text-8xl md:text-9xl font-bold font-sans tracking-tighter drop-shadow-2xl mb-2 text-[#f1e9e9]">
+              <div className="text-6xl sm:text-8xl md:text-9xl font-bold font-sans tracking-tighter drop-shadow-2xl mb-2 text-[#f1e9e9]">
                 {formatRunningTime(timeInSeconds)}
               </div>
               {mode === "pomodoro" ? (
-                <div className="flex items-center gap-4 mb-8 w-80">
+                <div className="flex items-center gap-4 mb-8 w-56 sm:w-80 max-w-[80vw]">
                   <div className="flex-1 h-1 bg-white/20 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-white transition-all duration-1000 ease-linear"
@@ -80,23 +80,23 @@ export default function FocusWidget({
               +
             </button>
           </div>
-          <div className="flex gap-4 items-center mt-2">
+          <div className="flex flex-wrap gap-3 sm:gap-4 items-center justify-center mt-2">
             <button
               onClick={togglePause}
-              className="px-10 py-3.5 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full font-bold text-xs uppercase tracking-widest backdrop-blur-md transition-all active:scale-95"
+              className="px-6 py-3 sm:px-10 sm:py-3.5 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full font-bold text-[10px] sm:text-xs uppercase tracking-widest backdrop-blur-md transition-all active:scale-95"
             >
               {isPaused ? "Resume" : "Pause"}
             </button>
             <button
               onClick={triggerCompleteFlow}
-              className="px-10 py-3.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-full font-bold text-xs uppercase tracking-widest backdrop-blur-md transition-all active:scale-95"
+              className="px-6 py-3 sm:px-10 sm:py-3.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-full font-bold text-[10px] sm:text-xs uppercase tracking-widest backdrop-blur-md transition-all active:scale-95"
             >
               Complete
             </button>
           </div>
         </div>
       ) : (
-        <div className="z-10 flex flex-col items-center p-5 bg-[#111111]/85 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl w-[320px] -translate-y-6 transition-all">
+        <div className="z-10 flex flex-col items-center p-5 bg-[#111111]/85 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl w-[320px] max-w-[90vw] -translate-y-6 transition-all">
           <div className="w-full flex justify-between items-center mb-4 px-1">
             <button
               onClick={() => setShowWidget(false)}

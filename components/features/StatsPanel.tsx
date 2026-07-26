@@ -42,9 +42,9 @@ export default function StatsPanel({
   formatSessionTimes,
 }: any) {
   return (
-    <div className="z-20 flex bg-[#0a0a0c]/90 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl w-[820px] max-w-[95vw] h-[520px] p-6 transition-all -translate-y-2 overflow-hidden">
+    <div className="z-20 flex flex-col sm:flex-row bg-[#0a0a0c]/90 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl w-full sm:w-[820px] max-w-[95vw] h-[85vh] sm:h-[520px] p-4 sm:p-6 transition-all -translate-y-2 overflow-hidden">
       {/* Sidebar */}
-      <div className="w-52 border-r border-white/10 pr-5 flex flex-col justify-between overflow-y-auto">
+      <div className="w-full sm:w-52 shrink-0 max-h-[38vh] sm:max-h-none border-b sm:border-b-0 sm:border-r border-white/10 pb-4 sm:pb-0 sm:pr-5 flex flex-col sm:justify-between overflow-y-auto">
         <div>
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-xs font-bold uppercase tracking-widest text-white/40">
@@ -73,29 +73,29 @@ export default function StatsPanel({
               </svg>
             </button>
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-row sm:flex-col gap-2 overflow-x-auto sm:overflow-visible pb-1 sm:pb-0">
             <button
               onClick={() => setStatsSubTab("today")}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${statsSubTab === "today" ? "bg-white/10 text-white border border-white/10" : "text-white/60 hover:text-white hover:bg-white/5"}`}
+              className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all shrink-0 ${statsSubTab === "today" ? "bg-white/10 text-white border border-white/10" : "text-white/60 hover:text-white hover:bg-white/5"}`}
             >
               <span className="grayscale">☀️</span> Today
             </button>
             <button
               onClick={() => setStatsSubTab("general")}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${statsSubTab === "general" ? "bg-white/10 text-white border border-white/10" : "text-white/60 hover:text-white hover:bg-white/5"}`}
+              className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all shrink-0 ${statsSubTab === "general" ? "bg-white/10 text-white border border-white/10" : "text-white/60 hover:text-white hover:bg-white/5"}`}
             >
               <span className="grayscale">🏠</span> General
             </button>
             <button
               onClick={() => setStatsSubTab("todos")}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${statsSubTab === "todos" ? "bg-white/10 text-white border border-white/10" : "text-white/60 hover:text-white hover:bg-white/5"}`}
+              className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all shrink-0 ${statsSubTab === "todos" ? "bg-white/10 text-white border border-white/10" : "text-white/60 hover:text-white hover:bg-white/5"}`}
             >
               <span className="grayscale">📝</span> Todos
             </button>
           </div>
 
           {/* Side Tags Manager */}
-          <div className="mt-8 border-t border-white/10 pt-6">
+          <div className="mt-4 sm:mt-8 border-t border-white/10 pt-4 sm:pt-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-[10px] font-bold uppercase tracking-widest text-white/40">
                 Manage Tags
@@ -173,11 +173,11 @@ export default function StatsPanel({
       </div>
 
       {/* Main Panel Content */}
-      <div className="flex-1 pl-6 overflow-y-auto pr-2">
+      <div className="flex-1 pt-4 sm:pt-0 sm:pl-6 overflow-y-auto pr-1 sm:pr-2">
         {statsSubTab === "today" ? (
-          <div className="grid grid-cols-2 gap-6 h-full items-start">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 h-full items-start">
             {/* Left Panel */}
-            <div className="flex flex-col gap-5 border-r border-white/10 pr-6">
+            <div className="flex flex-col gap-5 sm:border-r border-white/10 sm:pr-6">
               <div>
                 <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
                   Focus | {new Date().getDate()}{" "}
@@ -324,7 +324,7 @@ export default function StatsPanel({
           </div>
         ) : statsSubTab === "general" ? (
           <div>
-            <div className="flex justify-between items-center mb-1">
+            <div className="flex flex-wrap gap-2 justify-between items-center mb-1">
               <h2 className="text-2xl font-bold text-[#f1e9e9]">
                 General Stats <span className="grayscale">📊</span>
               </h2>
@@ -402,11 +402,11 @@ export default function StatsPanel({
                       →
                     </button>
                   </div>
-                  <div className="h-44 flex items-end justify-between gap-3 px-2 pt-2">
+                  <div className="h-44 flex items-end justify-between sm:justify-between gap-2 sm:gap-3 px-2 pt-2 overflow-x-auto">
                     {weeklyChart.dayData.map((data: any, idx: number) => (
                       <div
                         key={idx}
-                        className="flex flex-col items-center gap-1.5 flex-1 h-full justify-end"
+                        className="flex flex-col items-center gap-1.5 flex-1 min-w-[28px] h-full justify-end"
                       >
                         <div
                           className="w-full flex flex-col justify-end gap-[1px] h-full"
@@ -471,7 +471,7 @@ export default function StatsPanel({
                       No session data logged yet for pie chart
                     </div>
                   ) : (
-                    <div className="flex items-center gap-12 py-2 w-full justify-center">
+                    <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-12 py-2 w-full justify-center">
                       <div
                         className="w-36 h-36 rounded-full shadow-lg"
                         style={{
@@ -570,7 +570,7 @@ export default function StatsPanel({
             <p className="text-xs text-white/40 mb-6">
               What's done, what's pending, and how it breaks down by tag.
             </p>
-            <div className="grid grid-cols-2 gap-6 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
               <div className="bg-[#111115] border border-white/10 rounded-2xl p-5">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-300/80 mb-3">
                   ✓ Completed ({completedTodos.length})

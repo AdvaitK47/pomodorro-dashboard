@@ -72,6 +72,18 @@ export default function Home() {
   const initialTimeRef = useRef(25 * 60);
   const sessionStartTimeRef = useRef<Date | null>(null);
   const [pauseCount, setPauseCount] = useState(0);
+  // Wall-clock anchor for the running timer. Ticks are only ever used
+  // as a "please recompute now" signal — the actual value is always
+  // derived from Date.now() minus this anchor, so a throttled or
+  // fully-suspended background tab (backgrounded tab, phone screen
+  // off, etc.) can never make the timer lose time. The instant the
+  // tab resumes JS execution, the next tick snaps to the correct
+  // value instead of continuing from wherever it left off.
+  const timerAnchorRef = useRef<{
+    startedAt: number;
+    baseSeconds: number;
+  } | null>(null);
+  const wasEffectivelyRunningRef = useRef(false);
 
   // --- MODALS STATE ---
   const [confirmEnd, setConfirmEnd] = useState<{
@@ -254,6 +266,7 @@ export default function Home() {
   };
 
   const executeCompleteSession = async (durationSec: number) => {
+    timerAnchorRef.current = null;
     if (durationSec < 300) {
       setIsRunning(false);
       setIsPaused(false);
@@ -327,37 +340,78 @@ export default function Home() {
   const playSuccessSound = () => playSound("/successSound.mp3");
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isRunning && !isPaused && !confirmEnd?.show) {
-      interval = setInterval(() => {
-        setTimeInSeconds((prev) => {
-          if (mode === "pomodoro") {
-            if (prev <= 1) {
-              executeCompleteSession(initialTimeRef.current);
-              return 0;
-            }
-            return prev - 1;
-          } else {
-            return prev + 1;
-          }
-        });
-      }, 1000);
+    const effectivelyRunning = isRunning && !isPaused && !confirmEnd?.show;
+
+    // Just started or resumed (from pause, or from the end-session
+    // modal being cancelled) — re-anchor to "now" using whatever time
+    // is currently on screen.
+    if (effectivelyRunning && !wasEffectivelyRunningRef.current) {
+      timerAnchorRef.current = {
+        startedAt: Date.now(),
+        baseSeconds: timeInSeconds,
+      };
     }
-    return () => clearInterval(interval);
-  }, [isRunning, isPaused, mode, selectedTag, confirmEnd]);
+    wasEffectivelyRunningRef.current = effectivelyRunning;
+
+    if (!effectivelyRunning) return;
+
+    const tick = () => {
+      const anchor = timerAnchorRef.current;
+      if (!anchor) return;
+      const elapsed = Math.floor((Date.now() - anchor.startedAt) / 1000);
+      if (mode === "pomodoro") {
+        const remaining = anchor.baseSeconds - elapsed;
+        if (remaining <= 0) {
+          timerAnchorRef.current = null;
+          setTimeInSeconds(0);
+          executeCompleteSession(initialTimeRef.current);
+        } else {
+          setTimeInSeconds(remaining);
+        }
+      } else {
+        setTimeInSeconds(anchor.baseSeconds + elapsed);
+      }
+    };
+
+    // Correct immediately (covers coming back from a fully-suspended
+    // tab, where this whole effect only gets to run again once JS
+    // resumes) and then every second while foregrounded.
+    tick();
+    const interval = setInterval(tick, 1000);
+
+    // setInterval can be throttled to as little as once a minute (or
+    // paused entirely) while the tab is hidden. Force an immediate
+    // correction the moment it becomes visible again instead of
+    // waiting for the next scheduled tick.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRunning, isPaused, mode, confirmEnd]);
 
   const handleStart = () => {
     playStartSound();
+    let startSeconds: number;
     if (mode === "pomodoro") {
       const hrs = parseInt(inputHrs) || 0;
       const mins = parseInt(inputMins) || 0;
-      const totalSec = hrs * 3600 + mins * 60;
-      setTimeInSeconds(totalSec);
-      initialTimeRef.current = totalSec;
+      startSeconds = hrs * 3600 + mins * 60;
+      initialTimeRef.current = startSeconds;
     } else {
-      setTimeInSeconds(0);
+      startSeconds = 0;
       initialTimeRef.current = 0;
     }
+    setTimeInSeconds(startSeconds);
+    timerAnchorRef.current = {
+      startedAt: Date.now(),
+      baseSeconds: startSeconds,
+    };
     sessionStartTimeRef.current = new Date();
     setPauseCount(0);
     setIsRunning(true);
@@ -376,12 +430,22 @@ export default function Home() {
 
   const adjustTimer = (seconds: number) => {
     if (mode !== "pomodoro" || !isRunning) return;
-    setTimeInSeconds((prev) => {
-      const newTime = prev + seconds;
-      if (newTime <= 0) return 1;
-      return newTime;
-    });
+    const effectivelyRunning = !isPaused && !confirmEnd?.show;
+    const anchor = timerAnchorRef.current;
+    const currentRemaining =
+      effectivelyRunning && anchor
+        ? anchor.baseSeconds -
+          Math.floor((Date.now() - anchor.startedAt) / 1000)
+        : timeInSeconds;
+    const newRemaining = Math.max(1, currentRemaining + seconds);
+    if (effectivelyRunning) {
+      timerAnchorRef.current = {
+        startedAt: Date.now(),
+        baseSeconds: newRemaining,
+      };
+    }
     initialTimeRef.current += seconds;
+    setTimeInSeconds(newRemaining);
   };
 
   const triggerCompleteFlow = () => {
@@ -841,22 +905,24 @@ export default function Home() {
 
       {/* Guest Mode Banner */}
       {!user && showGuestBanner && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-amber-500/10 backdrop-blur-md border border-amber-500/30 text-amber-200 px-6 py-2.5 rounded-full text-xs flex items-center gap-3 animate-in fade-in slide-in-from-top-4 shadow-xl">
+        <div className="fixed sm:absolute top-0 sm:top-4 inset-x-0 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 z-20 sm:z-50 bg-amber-500/10 backdrop-blur-md border-b sm:border sm:rounded-full border-amber-500/30 text-amber-200 px-4 py-2 sm:px-6 sm:py-2.5 text-[10px] sm:text-xs flex items-center justify-center flex-wrap gap-2 sm:gap-3 animate-in fade-in slide-in-from-top-4 shadow-xl">
           <button
             onClick={() => setShowGuestBanner(false)}
-            className="text-amber-200/70 hover:text-white transition-colors"
+            className="text-amber-200/70 hover:text-white transition-colors shrink-0"
             aria-label="Dismiss"
           >
             ✕
           </button>
-          <span>⚠️ You are in Guest Mode. Sign In to save your progress.</span>
-          <div className="w-[1px] h-4 bg-amber-500/30"></div>
+          <span className="text-center leading-tight">
+            ⚠️ You are in Guest Mode. Sign In to save your progress.
+          </span>
+          <div className="w-[1px] h-4 bg-amber-500/30 hidden sm:block"></div>
           <button
             onClick={() => {
               sessionStorage.removeItem("guestMode");
               router.push("/login");
             }}
-            className="font-bold uppercase tracking-wider hover:text-white transition-colors"
+            className="font-bold uppercase tracking-wider hover:text-white transition-colors shrink-0 underline sm:no-underline"
           >
             Sign In
           </button>
@@ -866,6 +932,7 @@ export default function Home() {
       <HeaderWidgets
         isRunning={isRunning}
         isPaused={isPaused}
+        hasGuestBanner={!user && showGuestBanner}
         clock={clock}
         currentTime={currentTime}
         dayProgressPct={dayProgressPct}
