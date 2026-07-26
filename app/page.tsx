@@ -21,6 +21,7 @@ import TodosPanel from "../components/features/TodosPanel";
 import StatsPanel from "../components/features/StatsPanel";
 import HeaderWidgets from "../components/layout/HeaderWidgets";
 import ChangeUsernameModal from "../components/modals/ChangeUsernameModal";
+import SupportButton from "../components/features/SupportButton";
 
 export default function Home() {
   const router = useRouter();
@@ -1124,6 +1125,23 @@ export default function Home() {
           isGuest={!user}
         />
       )}
+
+      <div
+        className={`absolute bottom-8 right-8 z-10 transition-opacity duration-500 ${isRunning && !isPaused ? "opacity-20" : "opacity-100"}`}
+      >
+        <div className="bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl p-1 shadow-xl">
+          <Image
+            src="/logo.png"
+            alt="Logo"
+            width={300}
+            height={56}
+            className="h-15 w-auto object-contain rounded-xl"
+            priority
+          />
+        </div>
+      </div>
+
+      <SupportButton isRunning={isRunning} isPaused={isPaused} />
 
       <div
         className={`absolute bottom-8 right-8 z-10 transition-opacity duration-500 ${isRunning && !isPaused ? "opacity-20" : "opacity-100"}`}
