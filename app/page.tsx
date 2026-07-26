@@ -21,6 +21,7 @@ import TodosPanel from "../components/features/TodosPanel";
 import StatsPanel from "../components/features/StatsPanel";
 import HeaderWidgets from "../components/layout/HeaderWidgets";
 import ChangeUsernameModal from "../components/modals/ChangeUsernameModal";
+import TodoLinkModal from "../components/modals/TodoLinkModal";
 
 export default function Home() {
   const router = useRouter();
@@ -72,37 +73,18 @@ export default function Home() {
   const initialTimeRef = useRef(25 * 60);
   const sessionStartTimeRef = useRef<Date | null>(null);
   const [pauseCount, setPauseCount] = useState(0);
-  // Wall-clock anchor for the running timer. Ticks are only ever used
-  // as a "please recompute now" signal — the actual value is always
-  // derived from Date.now() minus this anchor, so a throttled or
-  // fully-suspended background tab (backgrounded tab, phone screen
-  // off, etc.) can never make the timer lose time. The instant the
-  // tab resumes JS execution, the next tick snaps to the correct
-  // value instead of continuing from wherever it left off.
   const timerAnchorRef = useRef<{
     startedAt: number;
     baseSeconds: number;
   } | null>(null);
   const wasEffectivelyRunningRef = useRef(false);
 
-  // Stable per-session identity. Generated once when a session starts
-  // (handleStart) and used as the dedupe key on insert. This is what
-  // makes session completion idempotent: no matter how many times or
-  // from how many tabs/devices executeCompleteSession ends up firing
-  // for the *same* session, only one row can ever land in Supabase for
-  // it, because client_session_id is unique in the DB and we upsert
-  // with ignoreDuplicates on conflict.
   const sessionIdRef = useRef<string | null>(null);
-  // Extra in-memory guard so a single mount never even attempts a
-  // second insert for a session it already finalized.
   const finalizedRef = useRef(false);
 
-  // Which todo (if any) the *next* session should count toward. The
-  // user picks this before hitting start; we snapshot it into a ref
-  // at handleStart so a mid-session tag change can't retroactively
-  // change what a running session counts toward.
   const [sessionTodoId, setSessionTodoId] = useState<string | null>(null);
   const sessionTodoIdRef = useRef<string | null>(null);
+  const [showTodoLinkModal, setShowTodoLinkModal] = useState(false);
 
   // --- MODALS STATE ---
   const [confirmEnd, setConfirmEnd] = useState<{
@@ -144,12 +126,16 @@ export default function Home() {
         setLoadingAuth(false);
         setTags(["Work", "Study", "Reading"]);
         setSelectedTag("Work");
+
+        try {
+          const localTodos = localStorage.getItem("pomodoro-todos");
+          if (localTodos) setTodos(JSON.parse(localTodos));
+        } catch (e) {}
         return;
       }
 
       setUser(session.user);
 
-      // Fetch Profile
       const { data: profileData } = await supabase
         .from("profiles")
         .select("*")
@@ -158,7 +144,6 @@ export default function Home() {
 
       if (profileData) {
         setProfile(profileData);
-        // Backfill email for profiles created before the email column existed
         if (!profileData.email && session.user.email) {
           await supabase
             .from("profiles")
@@ -166,7 +151,6 @@ export default function Home() {
             .eq("id", session.user.id);
         }
       } else {
-        // FIX FOR EMPTY PROFILES TABLE: Auto-create profile if missing
         const fallbackUsername = session.user.user_metadata?.username || "USER";
         const newProfile = {
           id: session.user.id,
@@ -180,6 +164,7 @@ export default function Home() {
 
       fetchTags();
       fetchSessions();
+      fetchTodos();
       setLoadingAuth(false);
     };
     checkUser();
@@ -193,11 +178,7 @@ export default function Home() {
 
   const handleDeleteAccount = async () => {
     if (!user) return;
-
-    // Call the SQL function we created in Step 1 to nuke the auth record
     await supabase.rpc("delete_account");
-
-    // Sign out and push to login
     await supabase.auth.signOut();
     sessionStorage.removeItem("guestMode");
     router.push("/login");
@@ -205,11 +186,7 @@ export default function Home() {
 
   const handleChangeUsername = async (newUsername: string) => {
     if (!user || !newUsername.trim()) return;
-
-    // Update local state immediately
     setProfile((prev: any) => ({ ...prev, username: newUsername.trim() }));
-
-    // Update Supabase profile table
     await supabase
       .from("profiles")
       .update({ username: newUsername.trim() })
@@ -217,7 +194,6 @@ export default function Home() {
     setShowUsernameModal(false);
   };
 
-  // PFP Handlers
   const handlePfpUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -269,6 +245,21 @@ export default function Home() {
     }
   };
 
+  const fetchTodos = async () => {
+    const { data, error } = await supabase.from("todos").select("*");
+    if (!error && data) {
+      const mappedTodos: Todo[] = data.map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        tag: t.tag,
+        targetHours: Number(t.target_hours),
+        scheduledDate: t.scheduled_date,
+        createdAt: t.created_at,
+      }));
+      setTodos(mappedTodos);
+    }
+  };
+
   const handleAddTag = async () => {
     const newTag = newTagInput.trim();
     if (newTag && !tags.includes(newTag)) {
@@ -287,9 +278,6 @@ export default function Home() {
   const executeCompleteSession = async (durationSec: number) => {
     timerAnchorRef.current = null;
 
-    // Hard guard: if this exact session was already finalized (e.g. a
-    // duplicate tab/effect fire tried to complete it again), bail out
-    // immediately without touching state or the DB.
     if (finalizedRef.current) return;
     finalizedRef.current = true;
 
@@ -313,7 +301,7 @@ export default function Home() {
       tag_name: selectedTag,
       session_title: sessionTitle || "Focus Session",
       duration_seconds: durationSec,
-      todo_id: sessionTodoIdRef.current, // null if the user picked "None"
+      todo_id: sessionTodoIdRef.current,
     };
 
     const optimisticRecord = {
@@ -324,10 +312,6 @@ export default function Home() {
     setSessions((prev) => [...prev, optimisticRecord as SessionRecord]);
 
     if (user) {
-      // upsert + ignoreDuplicates: if two tabs/devices both try to
-      // complete the same logical session (same client_session_id),
-      // only one row is ever kept. The unique constraint on
-      // client_session_id in Supabase is what actually enforces this.
       await supabase.from("sessions").upsert([newRecord], {
         onConflict: "client_session_id",
         ignoreDuplicates: true,
@@ -377,9 +361,6 @@ export default function Home() {
   useEffect(() => {
     const effectivelyRunning = isRunning && !isPaused && !confirmEnd?.show;
 
-    // Just started or resumed (from pause, or from the end-session
-    // modal being cancelled) — re-anchor to "now" using whatever time
-    // is currently on screen.
     if (effectivelyRunning && !wasEffectivelyRunningRef.current) {
       timerAnchorRef.current = {
         startedAt: Date.now(),
@@ -408,16 +389,9 @@ export default function Home() {
       }
     };
 
-    // Correct immediately (covers coming back from a fully-suspended
-    // tab, where this whole effect only gets to run again once JS
-    // resumes) and then every second while foregrounded.
     tick();
     const interval = setInterval(tick, 1000);
 
-    // setInterval can be throttled to as little as once a minute (or
-    // paused entirely) while the tab is hidden. Force an immediate
-    // correction the moment it becomes visible again instead of
-    // waiting for the next scheduled tick.
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") tick();
     };
@@ -432,9 +406,6 @@ export default function Home() {
 
   const handleStart = () => {
     playStartSound();
-    // New identity for this session — used as the dedupe key when it
-    // eventually completes. Reset the finalize guard too, since this
-    // is a brand new session.
     sessionIdRef.current = crypto.randomUUID();
     finalizedRef.current = false;
     sessionTodoIdRef.current = sessionTodoId;
@@ -458,6 +429,16 @@ export default function Home() {
     setPauseCount(0);
     setIsRunning(true);
     setIsPaused(false);
+  };
+
+  const handleStartClick = () => {
+    if (eligibleTodosForSession.length > 0) {
+      setShowTodoLinkModal(true);
+    } else {
+      setSessionTodoId(null);
+      sessionTodoIdRef.current = null;
+      handleStart();
+    }
   };
 
   const togglePause = () => {
@@ -546,25 +527,60 @@ export default function Home() {
         .eq("user_id", user.id);
   };
 
-  const handleAddTodo = () => {
+  const handleAddTodo = async () => {
     const name = todoName.trim();
     const hrs = parseFloat(todoHours);
     if (!name || !todoTag || !hrs || hrs <= 0) return;
-    const newTodo: Todo = {
-      id: Date.now().toString(),
+
+    const newTodoPayload = {
+      user_id: user?.id,
       name,
       tag: todoTag,
-      targetHours: hrs,
-      scheduledDate: todoDate,
-      createdAt: new Date().toISOString(),
+      target_hours: hrs,
+      scheduled_date: todoDate,
     };
-    setTodos((prev) => [...prev, newTodo]);
+
+    if (user) {
+      const { data, error } = await supabase
+        .from("todos")
+        .insert([newTodoPayload])
+        .select()
+        .single();
+
+      if (!error && data) {
+        const createdTodo: Todo = {
+          id: data.id,
+          name: data.name,
+          tag: data.tag,
+          targetHours: Number(data.target_hours),
+          scheduledDate: data.scheduled_date,
+          createdAt: data.created_at,
+        };
+        setTodos((prev) => [...prev, createdTodo]);
+      }
+    } else {
+      const guestTodo: Todo = {
+        id: Date.now().toString(),
+        name,
+        tag: todoTag,
+        targetHours: hrs,
+        scheduledDate: todoDate,
+        createdAt: new Date().toISOString(),
+      };
+      setTodos((prev) => [...prev, guestTodo]);
+    }
+
     setTodoName("");
     setTodoHours("1");
   };
 
-  const handleDeleteTodo = (id: string) =>
+  const handleDeleteTodo = async (id: string) => {
     setTodos((prev) => prev.filter((t) => t.id !== id));
+    if (user) {
+      await supabase.from("todos").delete().eq("id", id).eq("user_id", user.id);
+    }
+  };
+
   const confirmDeleteTodo = () => {
     if (!todoToDelete) return;
     handleDeleteTodo(todoToDelete.id);
@@ -588,13 +604,13 @@ export default function Home() {
     setUseCustomBg(false);
     setSelectedBg(0);
   };
+
   const getTodoProgressSeconds = (todo: Todo) => {
     return sessions
       .filter((s: any) => s.todo_id === todo.id)
       .reduce((acc, s) => acc + s.duration_seconds, 0);
   };
 
-  // GUEST LOCK: force default background + no overlays for non-signed-in users
   useEffect(() => {
     if (!loadingAuth && !user) {
       setSelectedBg(0);
@@ -604,7 +620,6 @@ export default function Home() {
     }
   }, [loadingAuth, user]);
 
-  // LOCAL STORAGE EFFECTS
   useEffect(() => {
     try {
       localStorage.setItem("pomodoro-bg", selectedBg.toString());
@@ -623,20 +638,19 @@ export default function Home() {
   }, [customBg, useCustomBg]);
   useEffect(() => {
     try {
-      localStorage.setItem("pomodoro-todos", JSON.stringify(todos));
+      if (!user) {
+        localStorage.setItem("pomodoro-todos", JSON.stringify(todos));
+      }
     } catch (e) {}
-  }, [todos]);
+  }, [todos, user]);
   useEffect(() => {
     if (!todoTag && tags.length > 0) setTodoTag(tags[0]);
   }, [tags, todoTag]);
 
-  // Whenever the tag picked for the *next* session changes, clear any
-  // previously chosen todo — it likely doesn't belong to the new tag.
   useEffect(() => {
     setSessionTodoId(null);
   }, [selectedTag]);
 
-  // CALCS
   const yesterdayStr = toLocalDateStr(new Date(Date.now() - 86400000));
   const todaySessions = sessions.filter(
     (s) => toLocalDateStr(new Date(s.created_at)) === todayStr,
@@ -707,7 +721,6 @@ export default function Home() {
   };
   const { currentStreak } = calculateStreaks();
 
-  // Helper: get the [start, end] dates (Sun-Sat) for a given week offset from this week
   const getWeekRange = (offset: number) => {
     const now = new Date();
     const currentDay = now.getDay();
@@ -739,7 +752,8 @@ export default function Home() {
       daySessions.forEach((s) => {
         const val =
           chartMetric === "mins" ? Math.round(s.duration_seconds / 60) : 1;
-        tagTotals[s.tag_name] = (tagTotals[s.tag_name] || 0) + val;
+        const tagName = s.tag_name || "Untagged";
+        tagTotals[tagName] = (tagTotals[tagName] || 0) + val;
       });
 
       const totalValue = Object.values(tagTotals).reduce(
@@ -788,7 +802,6 @@ export default function Home() {
       return { slices: [], grandTotal: 0, gradientString: "" };
     }
 
-    // Gather all unique tags present in this week's sessions
     const activeTags = Object.keys(tagTotals);
 
     let cumulative = 0;
@@ -798,7 +811,6 @@ export default function Home() {
       const val = tagTotals[tag] || 0;
       const percent = ((val / grandTotal) * 100).toFixed(1);
 
-      // Assign pastel grey for Untagged, or cycle through tagColors for others
       const color =
         tag === "Untagged"
           ? "#9ca3af"
@@ -808,6 +820,12 @@ export default function Home() {
       cumulative += parseFloat(percent);
       if (val > 0) {
         gradientParts.push(`${color} ${startPct}% ${cumulative}%`);
+        if (activeTags.length > 1) {
+          gradientParts.push(
+            `#000000 ${cumulative}% ${Math.min(100, cumulative + 0.5)}%`,
+          );
+          cumulative = Math.min(100, cumulative + 0.5);
+        }
       }
       return { tag, color, percent };
     });
@@ -905,9 +923,6 @@ export default function Home() {
   const completedTodos = todos.filter(isTodoDone);
   const unfinishedTodos = todos.filter((t) => !isTodoDone(t));
 
-  // Options to offer in the "count this session toward..." picker:
-  // today's todos matching the tag currently selected for the next
-  // session, excluding ones already done.
   const eligibleTodosForSession = todayTodos.filter(
     (t) => t.tag === selectedTag && !isTodoDone(t),
   );
@@ -961,10 +976,8 @@ export default function Home() {
         <div className="absolute inset-0 bg-black/40 transition-all duration-700"></div>
       </div>
 
-      {/* Ambient overlays disabled for guests */}
       {user && <ParticleOverlay effect={overlayEffect} />}
 
-      {/* Guest Mode Banner */}
       {!user && showGuestBanner && (
         <div className="fixed sm:absolute top-0 sm:top-4 inset-x-0 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 z-20 sm:z-50 bg-amber-500/10 backdrop-blur-md border-b sm:border sm:rounded-full border-amber-500/30 text-amber-200 px-4 py-2 sm:px-6 sm:py-2.5 text-[10px] sm:text-xs flex items-center justify-center flex-wrap gap-2 sm:gap-3 animate-in fade-in slide-in-from-top-4 shadow-xl">
           <button
@@ -1067,6 +1080,17 @@ export default function Home() {
           onClose={() => setPopupData(null)}
         />
       )}
+      {showTodoLinkModal && (
+        <TodoLinkModal
+          todos={eligibleTodosForSession}
+          onSelect={(todoId) => {
+            setSessionTodoId(todoId);
+            setShowTodoLinkModal(false);
+            handleStart();
+          }}
+          onCancel={() => setShowTodoLinkModal(false)}
+        />
+      )}
 
       {/* WIDGETS */}
       <FocusWidget
@@ -1101,7 +1125,7 @@ export default function Home() {
         newTagInput={newTagInput}
         setNewTagInput={setNewTagInput}
         handleAddTag={handleAddTag}
-        handleStart={handleStart}
+        handleStart={handleStartClick}
         eligibleTodosForSession={eligibleTodosForSession}
         sessionTodoId={sessionTodoId}
         setSessionTodoId={setSessionTodoId}
