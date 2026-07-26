@@ -874,13 +874,13 @@ export default function Home() {
   // --- RENDER ---
   if (loadingAuth)
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-black text-white font-mono text-sm tracking-widest uppercase">
+      <div className="h-[100dvh] w-screen flex items-center justify-center bg-black text-white font-mono text-sm tracking-widest uppercase">
         Loading Core...
       </div>
     );
 
   return (
-    <main className="relative h-screen w-screen flex flex-col items-center justify-center text-white font-sans overflow-hidden select-none">
+    <main className="relative h-[100dvh] w-screen flex flex-col items-center justify-center text-white font-sans overflow-y-auto overflow-x-hidden select-none">
       <div className="absolute inset-0 z-[-1]">
         {useCustomBg && customBg ? (
           <img

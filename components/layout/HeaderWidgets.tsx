@@ -64,64 +64,53 @@ export default function HeaderWidgets({
     <div
       className={`fixed top-0 inset-x-0 z-10 flex flex-col gap-3 px-4 pb-4 ${hasGuestBanner ? "pt-16" : "pt-4"} sm:contents sm:p-0`}
     >
-      {/* TOP LEFT: Clock */}
-      <div
-        className={`relative self-start sm:absolute sm:top-8 sm:left-8 flex flex-col items-start transition-opacity duration-500 group ${isRunning && !isPaused ? "opacity-20" : "opacity-100"}`}
-      >
-        <div className="flex items-baseline tracking-tight drop-shadow-md">
-          <span className="text-3xl sm:text-4xl font-semibold font-sans text-[#f1e9e9]">
-            {clock.time}
-          </span>
-          <span className="text-xs sm:text-sm font-bold ml-1 text-white/80 uppercase">
-            {clock.ampm}
-          </span>
-        </div>
-        <div className="text-xs sm:text-sm tracking-wide text-white/90 mt-0.5 mb-1 sm:mt-1 sm:mb-2 font-medium drop-shadow-md">
-          {getFormattedDate(currentTime)}
-        </div>
-        <div className="w-32 sm:w-48 h-1.5 bg-white/20 rounded-full overflow-hidden border border-white/10 shadow-sm">
-          <div
-            className="h-full bg-white transition-all duration-1000 ease-linear"
-            style={{ width: `${dayProgressPct}%` }}
-          ></div>
-        </div>
-
-        <div className="absolute top-16 sm:top-20 left-0 w-48 p-3.5 bg-[#111111]/90 backdrop-blur-xl border border-white/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none shadow-2xl z-50">
-          <div className="text-sm font-bold text-[#f1e9e9]">
-            {Math.floor(dayProgressPct)}% complete
-          </div>
-          <div className="text-xs text-white/60 mt-1">
-            Ending in{" "}
-            <span className="font-bold text-white">
-              {hoursLeft} hr {minsLeft} mins
+      {/* Clock + Profile/Todos share the top row on mobile so Sign In
+          and the todos box stay pinned near the top instead of being
+          pushed down. sm:contents makes this wrapper invisible to
+          layout at sm+, restoring the original two separate absolute
+          corners. */}
+      <div className="flex sm:contents items-start justify-between gap-3">
+        {/* TOP LEFT: Clock */}
+        <div
+          className={`relative sm:absolute sm:top-8 sm:left-8 flex flex-col items-start transition-opacity duration-500 group ${isRunning && !isPaused ? "opacity-20" : "opacity-100"}`}
+        >
+          <div className="flex items-baseline tracking-tight drop-shadow-md">
+            <span className="text-3xl sm:text-4xl font-semibold font-sans text-[#f1e9e9]">
+              {clock.time}
+            </span>
+            <span className="text-xs sm:text-sm font-bold ml-1 text-white/80 uppercase">
+              {clock.ampm}
             </span>
           </div>
-        </div>
+          <div className="text-xs sm:text-sm tracking-wide text-white/90 mt-0.5 mb-1 sm:mt-1 sm:mb-2 font-medium drop-shadow-md">
+            {getFormattedDate(currentTime)}
+          </div>
+          <div className="w-32 sm:w-48 h-1.5 bg-white/20 rounded-full overflow-hidden border border-white/10 shadow-sm">
+            <div
+              className="h-full bg-white transition-all duration-1000 ease-linear"
+              style={{ width: `${dayProgressPct}%` }}
+            ></div>
+          </div>
 
-        <div className="flex flex-col items-start mt-2 sm:mt-4 drop-shadow-md">
-          <span className="text-base sm:text-xl font-bold text-[#f1e9e9] font-mono tracking-tight leading-none">
-            {todayHours > 0 ? `${todayHours}h ` : ""}
-            {todayMins} min
-          </span>
-          <span className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-white/50 mt-0.5">
-            Today's Focus
-          </span>
-        </div>
-      </div>
+          <div className="absolute top-16 sm:top-20 left-0 w-48 p-3.5 bg-[#111111]/90 backdrop-blur-xl border border-white/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none shadow-2xl z-50">
+            <div className="text-sm font-bold text-[#f1e9e9]">
+              {Math.floor(dayProgressPct)}% complete
+            </div>
+            <div className="text-xs text-white/60 mt-1">
+              Ending in{" "}
+              <span className="font-bold text-white">
+                {hoursLeft} hr {minsLeft} mins
+              </span>
+            </div>
+          </div>
 
-      {/* Streak + Profile/Todos share one row on mobile so Sign In and
-          the streak pill sit side by side instead of each eating a
-          full row. sm:contents makes this wrapper invisible to layout
-          at sm+, restoring the original two separate absolute corners. */}
-      <div className="flex sm:contents items-start justify-between gap-3">
-        {/* TOP MIDDLE: Streak (Scaled Down) */}
-        <div
-          className={`sm:absolute sm:top-8 sm:left-1/2 sm:-translate-x-1/2 flex transition-opacity duration-500 ${isRunning && !isPaused ? "opacity-20" : "opacity-100"}`}
-        >
-          <div className="flex items-center gap-1.5 bg-black/40 px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-full border border-white/10 backdrop-blur-md shadow-lg">
-            <span className="text-xs text-white grayscale">🔥</span>
-            <span className="text-[8px] font-bold tracking-widest uppercase text-white/90">
-              {currentStreak}d Streak
+          <div className="flex flex-col items-start mt-2 sm:mt-4 drop-shadow-md">
+            <span className="text-base sm:text-xl font-bold text-[#f1e9e9] font-mono tracking-tight leading-none">
+              {todayHours > 0 ? `${todayHours}h ` : ""}
+              {todayMins} min
+            </span>
+            <span className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-white/50 mt-0.5">
+              Today's Focus
             </span>
           </div>
         </div>
@@ -286,6 +275,19 @@ export default function HeaderWidgets({
               )}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* TOP MIDDLE: Streak (Scaled Down) — its own row on mobile,
+          below Clock/Profile since it's the lowest-priority element. */}
+      <div
+        className={`self-center sm:self-auto sm:absolute sm:top-8 sm:left-1/2 sm:-translate-x-1/2 flex transition-opacity duration-500 ${isRunning && !isPaused ? "opacity-20" : "opacity-100"}`}
+      >
+        <div className="flex items-center gap-1.5 bg-black/40 px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-full border border-white/10 backdrop-blur-md shadow-lg">
+          <span className="text-xs text-white grayscale">🔥</span>
+          <span className="text-[8px] font-bold tracking-widest uppercase text-white/90">
+            {currentStreak}d Streak
+          </span>
         </div>
       </div>
     </div>
