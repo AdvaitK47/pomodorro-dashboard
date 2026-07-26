@@ -589,13 +589,8 @@ export default function Home() {
     setSelectedBg(0);
   };
   const getTodoProgressSeconds = (todo: Todo) => {
-    // Only sessions explicitly linked to THIS todo count toward it.
-    // This is what stops (a) pre-existing sessions from that day
-    // being retroactively counted the moment a matching-tag todo is
-    // created, and (b) one session being double-counted across two
-    // todos that happen to share a tag.
     return sessions
-      .filter((s) => s.todo_id === todo.id)
+      .filter((s: any) => s.todo_id === todo.id)
       .reduce((acc, s) => acc + s.duration_seconds, 0);
   };
 
